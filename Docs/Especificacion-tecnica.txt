@@ -1,0 +1,321 @@
+Integrar el rol de **SuperAdmin** con control de licenciamiento granular (asignación manual de planes, períodos de prueba, cobros flexibles bimestrales/trimestrales y cuentas vitalicias gratuitas con créditos ilimitados para tus padres) cierra completamente el modelo operativo.
+
+A continuación tienes el **Paquete Oficial de Entregables de Arquitectura y Especificación Técnica**, formateado como documento maestro (Single Source of Truth) para que lo copies y pegues directamente en el chat del backend.
+
+---
+
+# DOCUMENTO MAESTRO DE ESPECIFICACIÓN TÉCNICA (BACKEND SSOT)
+
+**Proyecto:** Generador Asistido de Sesiones de Aprendizaje CNEB
+
+**Versión:** 1.0.0-MVP
+
+**Pila Recomendada:** Node.js (Fastify o Express + TypeScript) o Spring Boot / PostgreSQL / Redis / LLM API (Structured Outputs) / Compilador DOCX.
+
+---
+
+## 1. ROLES DEL SISTEMA (RBAC) & REGLAS DE NEGOCIO DE LICENCIAMIENTO
+
+### 1.1 Roles
+
+1. `SUPERADMIN` (Tu usuario):
+* Control total del sistema.
+* Alta, baja y suspensión manual de cuentas docentes.
+* Asignación y renovación manual o automática de planes de suscripción:
+* `TRIAL` (Prueba gratuita con $N$ créditos y vigencia en días).
+* `MONTHLY` (Plan mensual).
+* `BIMONTHLY` (Plan bimestral — alineado a los bimestres MINEDU).
+* `TRIMONTHLY` (Plan trimestral).
+* `ANNUAL` (Plan anual escolar).
+* `LIFETIME_FREE` (Exclusivo para tus padres u homologados: saldo ilimitado `is_unlimited = TRUE`, sin fecha de expiración y sin débito de créditos).
+
+
+* Monitoreo de consumos de tokens LLM e inyección de créditos manuales.
+
+
+2. `TEACHER` (Docente usuario):
+* Configuración de su perfil institucional (Nombre inmutable en documentos, I.E., UGEL, insignias, firma).
+* Generación y previsualización de sesiones (Ciclos VI y VII - Secundaria CNEB).
+
+
+* Exportación de sesiones en `.docx` con consumo atómico de créditos (excepto cuentas `LIFETIME_FREE`).
+
+
+
+### 1.2 Reglas Críticas del Motor Didáctico CNEB
+
+* **Distribución temporal obligatoria:**
+* 45 min (1 h.p.): Inicio 5-10 min, Desarrollo 30 min, Cierre 5-10 min (Total estricto: 45 min).
+* 90 min (2 h.p.): Inicio 10-15 min, Desarrollo 65-70 min, Cierre 10-15 min (Total estricto: 90 min).
+* 135 min (3 h.p.): Inicio 15 min, Desarrollo 105-110 min, Cierre 10-15 min (Total estricto: 135 min).
+
+
+* **DUA Metodológico:** Si `has_dua_inclusion = TRUE`, las pautas de inclusión no van en cajas separadas; se insertan como viñetas metodológicas dentro del cuerpo didáctico de Inicio y Desarrollo (`[DUA — Principio de Representación]`, `[DUA — Principio de Acción y Expresión]`).
+* **Blindaje de titularidad:** El nombre del docente en el documento `.docx` proviene únicamente de `institutional_profiles.teacher_full_name` para evitar el préstamo o reventa de cuentas entre colegas.
+* **Criterios de Evaluación:** Si se genera instrumento, se emiten exactamente 5 criterios observables derivados del desempeño precisado, con casillas en blanco para calificación manual (sin nombres de alumnos ficticios).
+
+---
+
+## 2. DDL POSTGRESQL & EXTENSIÓN DEL MODELO RELACIONAL
+
+```sql
+-- Habilitar extensión UUID
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- ---------------------------------------------------------------------------
+-- ENUMERACIONES
+-- ---------------------------------------------------------------------------
+CREATE TYPE user_role AS ENUM ('SUPERADMIN', 'TEACHER');
+CREATE TYPE subscription_plan AS ENUM ('TRIAL', 'MONTHLY', 'BIMONTHLY', 'TRIMONTHLY', 'ANNUAL', 'LIFETIME_FREE');
+CREATE TYPE grade_level AS ENUM ('FIRST', 'SECOND', 'THIRD', 'FOURTH', 'FIFTH');
+CREATE TYPE pedagogical_duration AS ENUM ('MINUTES_45', 'MINUTES_90', 'MINUTES_135');
+CREATE TYPE didactic_moment_type AS ENUM ('START', 'DEVELOPMENT', 'CLOSING');
+CREATE TYPE instrument_type AS ENUM ('CHECKLIST', 'RUBRIC', 'SELF_EVALUATION', 'OBSERVATION_GUIDE', 'NONE');
+CREATE TYPE cross_cutting_theme AS ENUM (
+    'RIGHTS', 'INCLUSIVE', 'INTERCULTURAL', 'GENDER_EQUALITY', 
+    'ENVIRONMENTAL', 'COMMON_GOOD', 'EXCELLENCE'
+);
+CREATE TYPE transaction_type AS ENUM (
+    'SUBSCRIPTION_RECHARGE', 'SESSION_EXPORT_DEBIT', 
+    'ADMIN_MANUAL_ADJUSTMENT', 'FAILED_REFUND'
+);
+
+-- ---------------------------------------------------------------------------
+-- TABLAS DE USUARIO Y GESTIÓN INSTITUCIONAL
+-- ---------------------------------------------------------------------------
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role user_role NOT NULL DEFAULT 'TEACHER',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE institutional_profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    teacher_full_name VARCHAR(150) NOT NULL,
+    specialty VARCHAR(100) NOT NULL,
+    school_name VARCHAR(200) NOT NULL,
+    ugel VARCHAR(50) NOT NULL,
+    dre VARCHAR(100) NOT NULL DEFAULT 'DRELM',
+    principal_name VARCHAR(150),
+    badge_url TEXT,
+    signature_url TEXT,
+    is_default BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_profiles_user_id ON institutional_profiles(user_id);
+
+-- ---------------------------------------------------------------------------
+-- SISTEMA DE CRÉDITOS, PLANES Y BILLETERA
+-- ---------------------------------------------------------------------------
+CREATE TABLE credit_wallets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    balance INTEGER NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    is_unlimited BOOLEAN NOT NULL DEFAULT FALSE, -- TRUE para LIFETIME_FREE (padres)
+    plan_type subscription_plan NOT NULL DEFAULT 'TRIAL',
+    starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ, -- NULL si es LIFETIME_FREE
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX idx_wallets_user ON credit_wallets(user_id);
+
+CREATE TABLE wallet_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    wallet_id UUID NOT NULL REFERENCES credit_wallets(id) ON DELETE CASCADE,
+    amount INTEGER NOT NULL,
+    transaction_type transaction_type NOT NULL,
+    reference_session_id UUID,
+    note VARCHAR(255),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_transactions_wallet ON wallet_transactions(wallet_id);
+
+-- ---------------------------------------------------------------------------
+-- CATÁLOGO CURRICULAR NACIONAL (CNEB)
+-- ---------------------------------------------------------------------------
+CREATE TABLE areas (
+    id VARCHAR(20) PRIMARY KEY, -- 'COM', 'EPT', 'MAT', 'CCSS', 'CYT', 'DPCC'
+    name VARCHAR(100) NOT NULL,
+    cycle VARCHAR(10) NOT NULL DEFAULT 'VI-VII',
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE TABLE competencies (
+    id VARCHAR(30) PRIMARY KEY,
+    area_id VARCHAR(20) NOT NULL REFERENCES areas(id),
+    title TEXT NOT NULL,
+    description TEXT NOT NULL
+);
+CREATE INDEX idx_competencies_area ON competencies(area_id);
+
+CREATE TABLE capacities (
+    id VARCHAR(30) PRIMARY KEY,
+    competency_id VARCHAR(30) NOT NULL REFERENCES competencies(id),
+    title VARCHAR(255) NOT NULL,
+    order_index SMALLINT NOT NULL
+);
+CREATE INDEX idx_capacities_competency ON capacities(competency_id);
+
+CREATE TABLE performances (
+    id VARCHAR(40) PRIMARY KEY,
+    competency_id VARCHAR(30) NOT NULL REFERENCES competencies(id),
+    grade_level grade_level NOT NULL,
+    standard_description TEXT NOT NULL
+);
+CREATE INDEX idx_performances_comp_grade ON performances(competency_id, grade_level);
+
+-- ---------------------------------------------------------------------------
+-- SESIONES DE APRENDIZAJE E INSTRUMENTOS
+-- ---------------------------------------------------------------------------
+CREATE TABLE learning_sessions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    area_id VARCHAR(20) NOT NULL REFERENCES areas(id),
+    grade_level grade_level NOT NULL,
+    sections VARCHAR(50) NOT NULL, -- Ej: '["A", "B", "C"]'
+    pedagogical_duration pedagogical_duration NOT NULL,
+    unit_title VARCHAR(255) NOT NULL,
+    session_title VARCHAR(255) NOT NULL,
+    learning_purpose TEXT NOT NULL,
+    evidence_description TEXT NOT NULL,
+    cross_cutting_theme cross_cutting_theme NOT NULL,
+    cross_cutting_values TEXT NOT NULL,
+    has_dua_inclusion BOOLEAN NOT NULL DEFAULT FALSE,
+    materials_and_resources TEXT[] NOT NULL,
+    evaluation_declaration TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX idx_sessions_user ON learning_sessions(user_id);
+
+CREATE TABLE session_competencies (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    competency_id VARCHAR(30) NOT NULL REFERENCES competencies(id),
+    performance_id VARCHAR(40) NOT NULL REFERENCES performances(id),
+    precised_performance TEXT NOT NULL,
+    is_primary BOOLEAN NOT NULL DEFAULT TRUE
+);
+CREATE INDEX idx_session_comp_session ON session_competencies(session_id);
+
+CREATE TABLE session_moments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    moment_type didactic_moment_type NOT NULL,
+    allocated_minutes SMALLINT NOT NULL,
+    pedagogical_processes TEXT NOT NULL,
+    activities_description TEXT NOT NULL,
+    dua_notes TEXT,
+    order_index SMALLINT NOT NULL,
+    CONSTRAINT uq_session_moment UNIQUE(session_id, moment_type)
+);
+CREATE INDEX idx_session_moments_session ON session_moments(session_id);
+
+CREATE TABLE evaluation_instruments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    session_id UUID UNIQUE NOT NULL REFERENCES learning_sessions(id) ON DELETE CASCADE,
+    instrument_type instrument_type NOT NULL,
+    evaluated_evidence VARCHAR(255) NOT NULL,
+    append_table_to_document BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE evaluation_criteria (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    instrument_id UUID NOT NULL REFERENCES evaluation_instruments(id) ON DELETE CASCADE,
+    criterion_number SMALLINT NOT NULL CHECK (criterion_number BETWEEN 1 AND 5),
+    description TEXT NOT NULL,
+    CONSTRAINT uq_instrument_criterion UNIQUE(instrument_id, criterion_number)
+);
+CREATE INDEX idx_criteria_instrument ON evaluation_criteria(instrument_id);
+
+```
+
+---
+
+## 3. CONTRATO DE API REST (ENDPOINTS CLAVE)
+
+### 3.1 Módulo SuperAdmin (`/api/v1/admin`) — Exclusivo Rol `SUPERADMIN`
+
+* `GET /api/v1/admin/users`: Lista docentes registrados, estado de cuenta y balance de créditos.
+* `POST /api/v1/admin/users`: Registro manual de un docente por el SuperAdmin.
+* `PATCH /api/v1/admin/users/{id}/subscription`: Modifica plan, créditos y vigencia:
+```json
+{
+  "plan_type": "LIFETIME_FREE",
+  "balance_adjustment": 9999,
+  "is_unlimited": true,
+  "expires_at": null,
+  "note": "Cuenta liberada vitalicia para familiares"
+}
+
+```
+
+
+
+### 3.2 Módulo Catálogo Curricular (`/api/v1/curriculum`)
+
+* `GET /api/v1/curriculum/areas`: Retorna listado de áreas.
+* `GET /api/v1/curriculum/areas/{area_id}/tree?grade_level=THIRD`: Retorna competencias, capacidades asociadas y desempeños oficiales del grado en un payload optimizado para la UI reactiva.
+
+
+
+### 3.3 Módulo Sesiones y Generación IA (`/api/v1/sessions`)
+
+* `POST /api/v1/sessions/preview`:
+* **Input:** `area_id`, `grade_level`, `sections`, `pedagogical_duration`, `unit_title`, `session_title`, `cross_cutting_theme`, `has_dua_inclusion`, `selected_competencies`, `materials_and_resources`, `instrument_config`.
+* **Acción:** Llama al LLM con `response_format: json_object` forzando los minutos dosificados, DUA integrado y 5 criterios observables de evaluación.
+* **Output:** JSON estructurado listo para la vista previa oficial.
+
+
+* `POST /api/v1/sessions`: Guarda la sesión previsualizada en la base de datos (retorna el `id`).
+
+### 3.4 Módulo Exportación Word (`/api/v1/sessions/{id}/export-docx`)
+
+* **Lógica Transaccional (Unit of Work):**
+1. `SELECT balance, is_unlimited, expires_at FROM credit_wallets WHERE user_id = :uid FOR UPDATE;`
+2. Verificar: si `!is_unlimited`, validar que `balance >= 1` y que `expires_at > NOW()`. Si no cumple, abortar con `402 Payment Required`.
+3. Ensamblar documento Word en memoria (`docxtemplater` o `python-docx`) inyectando cabecera oficial, datos de `institutional_profiles`, matrices, DUA en la secuencia, cuadros de materiales, evaluación formal, espacio de 60 pt con firma y tabla anexa de lista de cotejo.
+4. Si `!is_unlimited`: restar 1 crédito e insertar log en `wallet_transactions`.
+5. Retornar archivo binario con cabecera `Content-Type: application/vnd.openxmlformats-officedocument.wordprocessingml.document`.
+
+
+
+---
+
+## 4. CHECKLIST DE IMPLEMENTACIÓN BACKEND
+
+### Paso 1: Base de Datos & Seeds
+
+* [ ] Ejecutar script DDL en PostgreSQL.
+* [ ] Cargar `seeds` del CNEB para Ciclos VI y VII (Comunicación [3 competencias], EPT [1 competencia con sus 4 capacidades], Matemática [4 competencias]).
+
+
+* [ ] Crear usuario inicial con rol `SUPERADMIN`.
+
+### Paso 2: Autenticación & Autorización
+
+* [ ] Middleware JWT para validar identidad y rol.
+* [ ] Guardián `@Roles(['SUPERADMIN'])` en rutas de administración.
+* [ ] Guardián `@Roles(['TEACHER', 'SUPERADMIN'])` en generación y descarga de sesiones.
+
+### Paso 3: Conexión con LLM
+
+* [ ] Configurar cliente de inferencia (OpenAI / Claude / Gemini) con `temperature: 0.2` y esquema JSON estricto.
+* [ ] Prompt del sistema enriquecido con la RVM N° 094-2020-MINEDU y la fórmula de los momentos didácticos (Inicio, Desarrollo, Cierre).
+
+### Paso 4: Motor de Compilación `.docx`
+
+* [ ] Diseñar plantilla base Word con márgenes de 2 cm, tipografía Arial/Calibri 10 pt y tablas con bordes gris claro (`#D1D5DB`).
+* [ ] Mapear etiquetas de reemplazo (`{{school_name}}`, `{{ugel}}`, `{{teacher_name}}`, `{{sections}}`, bucles para momentos didácticos y filas de lista de cotejo).
+* [ ] Garantizar el bloque final con recuadros paralelos de *Materiales* y *Evaluación formativa*, y el espacio para firma.
+
+---
+
+Con este documento maestro tienes los contratos de datos, endpoints, transacciones y lógica de negocio unificados para entregárselos al desarrollo de backend.

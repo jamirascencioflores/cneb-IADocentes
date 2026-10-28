@@ -1,0 +1,71 @@
+Checklist de Estado — Fase 1 (Auditoría Técnica, Selección de Stack y Estructura Base)
+[x] Selección y justificación del stack: Vite + React + TypeScript + Tailwind CSS frente a Next.js App Router.
+
+[x] Instalación del entorno: Inicialización del proyecto con pnpm, Vite, TypeScript y configuración de ESLint.
+
+[x] Configuración de estilos y diseño base: Tailwind CSS, PostCSS y directivas CSS en src/index.css.
+
+[x] Resolución de path aliases: Mapeo @/* configurado y sincronizado entre tsconfig.app.json y vite.config.ts.
+
+[x] Tipado global de Vite: src/vite-env.d.ts creado resolviendo ImportMeta.env.
+
+[x] Utilidad base de clases: src/shared/lib/utils.ts con helper cn().
+
+[x] Validación de entorno en runtime: src/config/env.ts con esquema Zod y variables de entorno tipadas.
+
+[x] Estructura de directorios Feature-Driven: Carpetas creadas en src/ (app, config, features, shared).
+
+Checklist de Estado — Fase 2 (Contratos de Dominio, Esquemas Zod y Repositorios)
+[x] Estándar de Errores RFC 7807: problem-details.types.ts con tipos de validación e instancia de excepción ApiProblemException.
+
+[x] Cliente HTTP Base: http-client.ts configurado con Axios, inyección de Bearer Token, withCredentials: true e interceptor de errores Problem Details.
+
+[x] Modelos de Dominio CNEB: session.types.ts con enums de grados, duración, momentos, DUA e instrumentos alineados a la base de datos.   
+
+[x] Esquema de Formulario UI: session-form.schema.ts validando los campos y reglas de los 3 pasos con Zod.   
+
+[x] Capa de Aislamiento (DTOs y Mappers): session.dto.ts y corrección de session.mapper.ts (camelCase/snake_case sincronizado).
+
+[x] Contrato e Infraestructura de Repositorio: session.repository.ts (interfaz desacoplada) y http-session.repository.ts implementando llamadas a /sessions/preview, /sessions y /export-docx. 
+
+
+[x] Fase 3.1: Capa Smart y Lógica de NegocioÁtomos base accesibles: Button, Skeleton, Badge, Input, Textarea, Checkbox. 
+  
+Hooks inteligentes: useSessionDraftForm (React Hook Form + Zod), useSessionPreview (mutación TanStack Query) y useExportDocx (descarga binaria Blob con cabeceras DOCX).
+   
+Suite de pruebas unitarias al 100% en Vitest para SessionMapper, HttpSessionRepository y useSessionDraftForm.
+
+
+[x] Fase 3.2: Componentes UI de Presentación (Split-Screen & Live Binding)
+Paso 1: Selección de Área, Grado (1.° a 5.°), chips de Secciones (A-H), Duración (45/90/135 min) y Materiales dinámicos.   
+
+Paso 2: Catálogo curricular reactivo por área (Comunicación [3 competencias], EPT [1 competencia con 4 capacidades] y Matemática [4 competencias]) con selección múltiple permisiva y desempeño precisado editable.  
+ 
+Paso 3: Título, adaptaciones DUA (4 casillas activas), selector de Instrumento pedagógico en español y toggle de anexo.   
+
+Vista Previa A4 Oficial MINEDU: Live Binding instantáneo, dosificación temporal automática (Inicio, Desarrollo, Cierre), notas DUA contextuales y paginación física con Hoja 2 exclusiva para el Anexo de Lista de Cotejo de 5 criterios.
+
+
+Fase 3.3 (Feedback Visual, Skeletons Asíncronos y Manejo RFC 7807)
+[x] Skeleton Estructural A4 (DocumentSkeleton.tsx): Réplica de la hoja física oficial MINEDU con indicadores animados para cabecera, datos informativos, matriz CNEB, secuencia didáctica y recuadros de evaluación.
+
+[x] Diálogo Global RFC 7807 (ProblemDetailsDialog.tsx): Modal desacoplado que intercepta códigos Problem Details (manejo específico para saldo insuficiente 402 Payment Required y validaciones pedagógicas 422 Unprocessable Entity).
+
+[x] Integración en Visor (MineduA4Document.tsx): Propiedad reactiva isLoading que conmuta entre el skeleton y las páginas A4 renderizadas.
+
+[x] Orquestación en la Página (SessionPlannerPage.tsx): Enlace del estado de carga de TanStack Query (previewMutation.isPending), captura de excepciones de Axios y apertura del modal de errores.
+
+
+Fase 3.4 (Autenticación, Billetera y Perfil Institucional)
+[x] Contratos de Dominio y Tipos (profile.types.ts): Entidades definidas para sesión del docente (UserSessionEntity), perfil institucional (InstitutionalProfileEntity) y estado de billetera/créditos (WalletEntity).   
+
+[x] Repositorio de Infraestructura (http-profile.repository.ts): HttpProfileRepository conectado a /auth/me, /profile/institutional y /wallets/me con Axios.   
+
+[x] Hook de Contexto Docente (useTeacherContext.ts): Consulta paralela con TanStack Query y fallbacks estructurados para desarrollo local.
+
+[x] Barra Superior Dinámica (TeacherNavbar.tsx): Renderizado reactivo del colegio, UGEL, año lectivo, saldo de créditos (o badge Ilimitado) y avatar del docente.   
+
+[x] Parametrización Dinámica del Documento A4 (MineduA4Document.tsx): Inyección de teacherName, schoolName y ugelText en cabecera oficial, datos informativos y firmas de Hoja 1 y Anexo (Página 2).   
+
+[x] Orquestación en Página Principal (SessionPlannerPage.tsx): Enlace completo entre el contexto institucional y la previsualización del documento.
+

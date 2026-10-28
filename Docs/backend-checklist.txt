@@ -1,0 +1,99 @@
+Checklist de Avance del Proyecto
+Fase 1: Auditoría Técnica, Stack y Configuración Base
+[x] Inicialización del proyecto con pnpm.
+
+[x] Dependencias de producción y tipos estrictos instalados.
+
+[x] Configuración de compilador TypeScript (tsconfig.json) con strict: true y exactOptionalPropertyTypes: true.
+
+[x] Estructura modular de carpetas bajo Clean Architecture.
+
+[x] Validación Zod de variables de entorno y archivo .env.
+
+[x] Middleware global de errores formateado bajo RFC 7807 (errorHandler).
+
+[x] Servidor base Fastify con plugins perimetrales (CORS, Helmet, Cookies, Rate Limiter) y endpoint /health.
+
+Fase 2: Dominio, Entidades y Contratos
+[x] Tipos base funcionales (Result<T, E>) y Value Object inmutable (UUID).
+
+[x] Entidad de negocio User y puertos del repositorio (IUserRepository).
+
+[x] Entidad InstitutionalProfile con blindaje de titularidad y puerto (IInstitutionalProfileRepository).
+
+[x] Entidad CreditWallet con lógica de consumo atómico y soporte LIFETIME_FREE.
+
+[x] Puerto de transacciones y persistencia IWalletRepository con soporte para bloqueo pesimista.
+
+[x] Value Object PedagogicalDuration con reglas estrictas de dosificación temporal CNEB (45, 90 y 135 min).
+
+[x] Contrato desacoplado para inferencia estructurada IA (ILLMService).
+
+[x] Contrato desacoplado para compilación binaria Word (IDocxGeneratorService).
+
+Fase 3: Implementación Modular
+[x] Módulo 1: Identity & Auth
+
+[x] Pool y esquema tipado de Kysely con PostgreSQL.
+
+[x] Hashing con Argon2id y tokens JWT (Access / Refresh en cookies seguras).
+
+[x] Repositorio Kysely de Usuarios.
+
+[x] Casos de uso RegisterTeacherUseCase (con wallet TRIAL) y LoginUseCase.
+
+[x] Middleware authenticate y authorize (RBAC).
+
+[x] Rutas HTTP /api/v1/auth y pruebas unitarias.
+
+[x] Módulo 2: Facturación y Suscripciones (Billing)
+
+[x] Repositorio Kysely de Billeteras con bloqueo pesimista (FOR UPDATE).
+
+[x] Casos de uso AdjustUserSubscriptionUseCase y GetWalletBalanceUseCase.
+
+[x] Rutas HTTP /api/v1/wallets/me y /api/v1/admin/users/:id/subscription.
+
+[x] Pruebas unitarias de ajuste de suscripción.
+
+[x] Módulo 3: Catálogo Curricular CNEB
+
+[x] Extensión de tipos de base de datos Kysely para Áreas, Competencias, Capacidades y Desempeños.
+
+[x] Interfaz y DTOs de árbol curricular (ICurriculumRepository).
+
+[x] Implementación KyselyCurriculumRepository optimizada para árbol reactivo.
+
+[x] Casos de uso ListAreasUseCase y GetCurriculumTreeUseCase.
+
+[x] Validación Zod y endpoints HTTP /api/v1/curriculum/areas y /api/v1/curriculum/areas/:areaId/tree.
+
+[x] Módulo 4: Generación IA y Persistencia de Sesiones Pedagógicas
+
+[x] Extensión de tablas en Kysely para sesiones, momentos, competencias e instrumentos de evaluación.
+
+[x] Adaptador de integración con Gemini LLM forzando esquema JSON estricto, distribución exacta de minutos, DUA integrado y 5 criterios observables de evaluación.
+
+[x] Caso de uso PreviewSessionUseCase desacoplado del catálogo curricular e IA.
+
+[x] Caso de uso SaveSessionUseCase con transacción atómica relacional completa.
+
+[x] Validación Zod en tiempo de ejecución para previsualización y guardado de sesiones.
+
+[x] Controlador HTTP registrado bajo las rutas /api/v1/sessions/preview y /api/v1/sessions protegidas por JWT.
+
+[x] Pruebas unitarias de PreviewSessionUseCase y SaveSessionUseCase verificadas con tipado estricto.
+
+[x] Módulo 5: Compilación y Exportación DOCX
+
+[x] Servicio NativeDocxGeneratorService con compilación 100% en memoria mediante docx (márgenes de 2 cm, bordes #D1D5DB, datos informativos, secuencia didáctica, materiales, anexo de evaluación y firma docente).   
+
+[x] Caso de uso ExportSessionDocxUseCase con validación de propiedad (BOLA/IDOR) y débito transaccional de créditos con bloqueo FOR UPDATE.   
+
+[x] Endpoint HTTP GET /api/v1/sessions/:id/export-docx con cabeceras binarias MIME.   
+
+[x] Pruebas unitarias de exportación y control de saldo passing.
+
+
+
+
