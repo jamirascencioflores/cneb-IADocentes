@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { HttpSessionRepository } from "./http-session.repository";
 import { httpClient } from "@/shared/lib/http-client";
 import { initialFormValues } from "../application/useSessionDraftForm";
-import { SessionPreviewResponseDTO } from "./session.dto";
+import { generatedSession } from "@/test/session-preview.fixture";
 
 vi.mock("@/shared/lib/http-client", () => ({
   httpClient: {
@@ -20,31 +20,7 @@ describe("HttpSessionRepository", () => {
   });
 
   it("generatePreview debe invocar /sessions/preview con el payload transformado", async () => {
-    const mockApiResponse: SessionPreviewResponseDTO = {
-      area_id: "COM",
-      area_name: "Comunicación",
-      grade_level: "THIRD",
-      sections: ["A", "B"],
-      pedagogical_duration: "MINUTES_90",
-      unit_title: "Unidad 04",
-      session_title: "El debate",
-      learning_purpose: "Propósito",
-      evidence_description: "Evidencia",
-      cross_cutting_theme: "RIGHTS",
-      cross_cutting_values: "Valores",
-      has_dua_inclusion: true,
-      dua_categories: [],
-      materials_and_resources: ["Ficha"],
-      evaluation_declaration: "Formativa",
-      competencies: [],
-      didactic_moments: [],
-      instrument: {
-        instrument_type: "CHECKLIST",
-        evaluated_evidence: "Evidencia",
-        append_table_to_document: true,
-        criteria: [],
-      },
-    };
+    const mockApiResponse = generatedSession;
 
     vi.mocked(httpClient.post).mockResolvedValueOnce({ data: mockApiResponse });
 
@@ -58,7 +34,10 @@ describe("HttpSessionRepository", () => {
         gradeLevel: "THIRD",
       }),
     );
-    expect(result.areaName).toBe("Comunicación");
+    expect(result.areaId).toBe("COM");
+    expect(result.didacticMoments[0].activitiesDescription).toBe(
+      generatedSession.moments[0].activitiesDescription,
+    );
   });
 
   it("downloadDocx debe llamar a /sessions/:id/export-docx solicitando responseType blob", async () => {

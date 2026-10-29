@@ -1,74 +1,66 @@
 import { useQuery } from "@tanstack/react-query";
 import { profileRepository } from "../infrastructure/http-profile.repository";
 import { authRepository } from "@/features/auth/infrastructure/http-auth.repository";
-import {
+import type {
   InstitutionalProfileEntity,
   UserSessionEntity,
   WalletEntity,
 } from "../domain/profile.types";
 
-const fallbackUser: UserSessionEntity = {
-  id: "teacher-default",
-  email: "docente.demo@cneb.pe",
-  fullName: "Jamir Jafet Ascencio Flores",
+const emptyUser: UserSessionEntity = {
+  id: "",
+  email: "",
+  fullName: "",
   role: "TEACHER",
 };
-
-const fallbackInstitution: InstitutionalProfileEntity = {
-  schoolId: "sch-6066",
-  schoolName: 'I.E. N.° 6066 "VILLA EL SALVADOR"',
-  modularCode: "0345678",
-  ugel: "UGEL 01 SAN JUAN DE MIRAFLORES / VILLA EL SALVADOR",
-  drelm: "DRELM",
-  region: "LIMA METROPOLITANA",
-  academicYear: 2026,
+const emptyInstitution: InstitutionalProfileEntity = {
+  schoolId: "",
+  schoolName: "Perfil institucional pendiente",
+  modularCode: "",
+  ugel: "",
+  drelm: "",
+  region: "",
+  academicYear: new Date().getFullYear(),
   level: "SECONDARY",
-  specialty: "Comunicación",
 };
-
-const fallbackWallet: WalletEntity = {
-  balance: 24,
+const emptyWallet: WalletEntity = {
+  balance: 0,
   isUnlimited: false,
-  currency: "PEN",
-  planName: "Plan Docente Pro",
+  currency: "",
+  planName: "",
 };
 
 export function useTeacherContext() {
-  const hasToken = authRepository.isAuthenticated();
-
+  const enabled = authRepository.isAuthenticated();
   const userQuery = useQuery({
     queryKey: ["auth", "me"],
     queryFn: () => profileRepository.getCurrentUser(),
-    placeholderData: fallbackUser,
-    enabled: hasToken,
+    enabled,
     retry: false,
-    staleTime: 1000 * 60 * 10,
   });
-
   const institutionQuery = useQuery({
     queryKey: ["profile", "institutional"],
     queryFn: () => profileRepository.getInstitutionalProfile(),
-    placeholderData: fallbackInstitution,
-    enabled: false, // Desactivado hasta que el endpoint esté creado en el backend
+    enabled,
     retry: false,
   });
-
   const walletQuery = useQuery({
     queryKey: ["wallets", "me"],
     queryFn: () => profileRepository.getWallet(),
-    placeholderData: fallbackWallet,
-    enabled: hasToken,
+    enabled,
     retry: false,
-    staleTime: 1000 * 60 * 5,
   });
-
   return {
-    user: userQuery.data ?? fallbackUser,
-    institution: institutionQuery.data ?? fallbackInstitution,
-    wallet: walletQuery.data ?? fallbackWallet,
+    user: userQuery.data ?? emptyUser,
+    institution: institutionQuery.data ?? emptyInstitution,
+    wallet: walletQuery.data ?? emptyWallet,
+    walletAvailable: walletQuery.isSuccess,
+    profileMissing:
+      institutionQuery.isSuccess && institutionQuery.data === null,
     isLoading:
-      userQuery.isLoading ||
-      institutionQuery.isLoading ||
-      walletQuery.isLoading,
+      userQuery.isPending ||
+      institutionQuery.isPending ||
+      walletQuery.isPending,
+    error: userQuery.error ?? institutionQuery.error ?? walletQuery.error,
   };
 }

@@ -14,7 +14,7 @@ export class HttpSessionRepository implements ISessionRepository {
       "/sessions/preview",
       payload,
     );
-    return SessionMapper.toDomainEntity(data);
+    return SessionMapper.toDomainEntity(data, formData);
   }
 
   public async saveSession(preview: SessionPreviewEntity): Promise<string> {

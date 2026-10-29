@@ -10,10 +10,19 @@ describe("SaveSessionUseCase", () => {
     };
   };
   let useCase: SaveSessionUseCase;
+  const lookup = vi.fn();
+  const insert = vi.fn();
 
   beforeEach(() => {
+    lookup.mockResolvedValue({ id: "PERF-1" });
+    insert.mockClear();
     const trxChain = {
-      insertInto: vi.fn().mockReturnThis(),
+      selectFrom: vi.fn().mockReturnThis(),
+      innerJoin: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      executeTakeFirst: lookup,
+      insertInto: insert.mockReturnThis(),
       values: vi.fn().mockReturnThis(),
       execute: vi.fn().mockResolvedValue(undefined),
     };
@@ -98,5 +107,18 @@ describe("SaveSessionUseCase", () => {
 
     expect(result).toHaveProperty("id");
     expect(typeof result.id).toBe("string");
+    expect(lookup).toHaveBeenCalledOnce();
+    insert.mockClear();
+    lookup.mockResolvedValue(undefined);
+    await expect(useCase.execute(dto)).rejects.toThrow(
+      "El desempeño no corresponde",
+    );
+    expect(insert).not.toHaveBeenCalled();
+    await expect(
+      useCase.execute({
+        ...dto,
+        moments: dto.moments.map((m) => ({ ...m, allocatedMinutes: 1 })),
+      }),
+    ).rejects.toThrow("Distribución temporal inválida");
   });
 });

@@ -8,6 +8,8 @@ export interface GenerateSessionPromptInput {
   sessionTitle: string;
   crossCuttingTheme: string;
   hasDuaInclusion: boolean;
+  materialsAndResources?: string[];
+  duaCategories?: string[];
   selectedCompetencies: Array<{
     title: string;
     standardDescription: string;

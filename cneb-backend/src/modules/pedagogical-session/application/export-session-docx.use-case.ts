@@ -108,7 +108,7 @@ export class ExportSessionDocxUseCase {
       unitTitle: session.unit_title,
       areaName: area?.name ?? session.area_id,
       gradeLevel: session.grade_level,
-      sections: session.sections,
+      sections: formatSections(session.sections),
       pedagogicalDuration: session.pedagogical_duration,
       learningPurpose: session.learning_purpose,
       evidenceDescription: session.evidence_description,
@@ -129,6 +129,12 @@ export class ExportSessionDocxUseCase {
         duaNotes: m.dua_notes,
       })),
       ...(criteria.length > 0 ? { evaluationCriteria: criteria } : {}),
+      ...(instrument
+        ? {
+            instrumentType: instrument.instrument_type,
+            appendTableToDocument: instrument.append_table_to_document,
+          }
+        : {}),
     };
 
     // 4. Compilación del Word en memoria
@@ -171,4 +177,15 @@ export class ExportSessionDocxUseCase {
       fileName: `Sesion_${safeTitle}.docx`,
     };
   }
+}
+
+function formatSections(value: string): string {
+  try {
+    const sections: unknown = JSON.parse(value);
+    if (Array.isArray(sections) && sections.every((s) => typeof s === "string"))
+      return sections.join(", ");
+  } catch {
+    /* Older records may already contain display text. */
+  }
+  return value;
 }

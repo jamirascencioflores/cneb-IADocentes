@@ -4,16 +4,10 @@ import { KyselyInstitutionalProfileRepository } from "../../../../modules/identi
 import { InstitutionalProfile } from "../../../../modules/identity/domain/institutional-profile.entity.js";
 import { authenticate } from "../../../middlewares/auth-guard.js";
 
-interface ProfileBodyRequest {
-  teacher_full_name: string;
-  specialty: string;
-  school_name: string;
-  ugel: string;
-  dre?: string;
-  principal_name?: string | null;
-  badge_url?: string | null;
-  signature_url?: string | null;
-}
+import {
+  updateInstitutionalProfileSchema,
+  type UpdateInstitutionalProfileDTO,
+} from "./profile.schemas.js";
 
 export const profileRoutes: FastifyPluginAsync = async (
   fastify: FastifyInstance,
@@ -68,7 +62,7 @@ export const profileRoutes: FastifyPluginAsync = async (
   });
 
   // PUT /api/v1/profile/institutional
-  fastify.put<{ Body: ProfileBodyRequest }>(
+  fastify.put<{ Body: UpdateInstitutionalProfileDTO }>(
     "/institutional",
     async (request, reply) => {
       const userPayload = request.user as unknown as {
@@ -87,7 +81,7 @@ export const profileRoutes: FastifyPluginAsync = async (
         });
       }
 
-      const body = request.body;
+      const body = updateInstitutionalProfileSchema.parse(request.body);
 
       const profile = InstitutionalProfile.create({
         userId,

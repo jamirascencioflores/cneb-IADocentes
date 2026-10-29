@@ -1,4 +1,6 @@
 import crypto from "node:crypto";
+import { ValidationError } from "../../../core/errors/app-error.js";
+import { hasValidMoments } from "../domain/generated-session.schema.js";
 import { Kysely } from "kysely";
 import {
   DatabaseSchema,
@@ -52,9 +54,29 @@ export class SaveSessionUseCase {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
   public async execute(dto: SaveSessionDTO): Promise<{ id: string }> {
+    if (!hasValidMoments(dto.pedagogicalDuration, dto.moments)) {
+      throw new ValidationError("Distribución temporal inválida.");
+    }
     const sessionId = crypto.randomUUID();
 
     await this.db.transaction().execute(async (trx) => {
+      for (const competency of dto.competencies) {
+        const match = await trx
+          .selectFrom("performances as p")
+          .innerJoin("competencies as c", "c.id", "p.competency_id")
+          .innerJoin("areas as a", "a.id", "c.area_id")
+          .select("p.id")
+          .where("p.id", "=", competency.performanceId)
+          .where("p.competency_id", "=", competency.competencyId)
+          .where("p.grade_level", "=", dto.gradeLevel)
+          .where("c.area_id", "=", dto.areaId)
+          .where("a.is_active", "=", true)
+          .executeTakeFirst();
+        if (!match)
+          throw new ValidationError(
+            "El desempeño no corresponde al área, competencia y grado seleccionados.",
+          );
+      }
       await trx
         .insertInto("learning_sessions")
         .values({

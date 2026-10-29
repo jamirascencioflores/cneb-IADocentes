@@ -5,13 +5,14 @@ import {
   ILLMService,
 } from "../../domain/llm-service.interface.js";
 import { PedagogicalDuration } from "../../domain/pedagogical-duration.vo.js";
+import { generatedSessionSchemaFor } from "../../domain/generated-session.schema.js";
 import { ValidationError } from "../../../../core/errors/app-error.js";
 
 export class GeminiLLMService implements ILLMService {
   private readonly apiUrl: string;
 
   constructor() {
-    this.apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${env.LLM_MODEL}:generateContent?key=${env.LLM_API_KEY}`;
+    this.apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${env.LLM_MODEL}:generateContent`;
   }
 
   public async generateSessionDraft(
@@ -60,6 +61,8 @@ Grado: ${input.gradeLevel}
 Título de Unidad: ${input.unitTitle}
 Título de Sesión: ${input.sessionTitle}
 Enfoque Transversal: ${input.crossCuttingTheme}
+Materiales disponibles: ${(input.materialsAndResources ?? []).join(", ")}
+Ajustes DUA solicitados: ${(input.duaCategories ?? []).join(", ")}
 Competencias y Desempeños:
 ${input.selectedCompetencies
   .map(
@@ -70,7 +73,11 @@ ${input.selectedCompetencies
 
     const response = await fetch(this.apiUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(60_000),
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": env.LLM_API_KEY,
+      },
       body: JSON.stringify({
         contents: [
           {
@@ -105,17 +112,22 @@ ${input.selectedCompetencies
       throw new Error("Respuesta vacía o inválida del proveedor LLM.");
     }
 
-    const parsed = JSON.parse(rawJson) as GeneratedSessionPayload;
-
-    if (
-      !Array.isArray(parsed.evaluationCriteria) ||
-      parsed.evaluationCriteria.length !== 5
-    ) {
+    let candidate: unknown;
+    try {
+      candidate = JSON.parse(rawJson);
+    } catch {
       throw new ValidationError(
-        "El motor LLM no devolvió los 5 criterios de evaluación requeridos.",
+        "El proveedor IA devolvió un JSON inválido. Intenta generar nuevamente.",
       );
     }
-
-    return parsed;
+    const parsed = generatedSessionSchemaFor(
+      input.pedagogicalDuration,
+    ).safeParse(candidate);
+    if (!parsed.success) {
+      throw new ValidationError(
+        "La respuesta IA no cumple la estructura o los tiempos de la sesión. Intenta generar nuevamente.",
+      );
+    }
+    return parsed.data;
   }
 }

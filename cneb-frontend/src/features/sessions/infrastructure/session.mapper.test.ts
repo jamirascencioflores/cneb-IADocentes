@@ -1,109 +1,71 @@
 import { describe, it, expect } from "vitest";
 import { SessionMapper } from "./session.mapper";
-import { SessionDraftFormData } from "../domain/session-form.schema";
-import { SessionPreviewResponseDTO } from "./session.dto";
+import { initialFormValues } from "../application/useSessionDraftForm";
+import { generatedSession } from "@/test/session-preview.fixture";
 
-describe("SessionMapper", () => {
-  it("toPreviewRequestDTO debe transformar los campos de dominio a camelCase según el contrato API", () => {
-    const formData: SessionDraftFormData = {
-      areaId: "COM",
-      gradeLevel: "THIRD",
-      sections: ["A", "B"],
-      pedagogicalDuration: "MINUTES_90",
-      unitTitle: "Unidad 04: Comunicación",
-      sessionTitle: "El debate argumentativo",
-      crossCuttingTheme: "RIGHTS",
-      crossCuttingValues: "Respeto a la libertad de expresión",
-      hasDuaInclusion: true,
-      duaCategories: ["Apoyos visuales"],
-      materialsAndResources: ["Ficha de Trabajo"],
-      selectedCompetencies: [
-        {
-          competencyId: "COM-01",
-          performanceId: "PERF-01",
-          precisedPerformance:
-            "Adecúa el texto oral a la situación comunicativa.",
-          isPrimary: true,
-        },
-      ],
+describe("SessionMapper / backend contract", () => {
+  it("sends competency IDs and instrument settings", () => {
+    const dto = SessionMapper.toPreviewRequestDTO(initialFormValues);
+    expect(dto.selectedCompetencyIds).toEqual(["COM_C01"]);
+    expect(dto.instrumentConfig).toEqual({
       instrumentType: "CHECKLIST",
       appendTableToDocument: true,
-    };
-
-    const dto = SessionMapper.toPreviewRequestDTO(formData);
-
-    expect(dto.areaId).toBe("COM");
-    expect(dto.gradeLevel).toBe("THIRD");
-    expect(dto.sections).toEqual(["A", "B"]);
-    expect(dto.pedagogicalDuration).toBe("MINUTES_90");
-    expect(dto.unitTitle).toBe("Unidad 04: Comunicación");
-    expect(dto.sessionTitle).toBe("El debate argumentativo");
-    expect(dto.crossCuttingTheme).toBe("RIGHTS");
-    expect(dto.hasDuaInclusion).toBe(true);
-    expect(dto.selectedCompetencyIds).toEqual(["COM-01"]);
-    expect(dto.instrumentConfig?.instrumentType).toBe("CHECKLIST");
-    expect(dto.instrumentConfig?.appendTableToDocument).toBe(true);
+    });
   });
-
-  it("toDomainEntity debe transformar el payload del backend en entidad de UI estructurada", () => {
-    const responseDto: SessionPreviewResponseDTO = {
-      id: "b4550ef8-32a7-47b2-a63e-f1b212345678",
-      areaId: "COM",
-      areaName: "Comunicación",
-      gradeLevel: "THIRD",
-      sections: ["A", "B"],
-      pedagogicalDuration: "MINUTES_90",
-      unitTitle: "Unidad 04",
-      sessionTitle: "El debate",
-      learningPurpose: "Aprender a debatir con argumentos sólidos.",
-      evidenceDescription: "Participación en el debate en aula.",
-      crossCuttingTheme: "RIGHTS",
-      crossCuttingValues: "Escucha activa",
-      hasDuaInclusion: true,
-      duaCategories: ["Apoyos visuales"],
-      materialsAndResources: ["Ficha de Trabajo"],
-      evaluationDeclaration: "Evaluación formativa",
-      competencies: [
-        {
-          competencyId: "COM-01",
-          competencyTitle: "Se comunica oralmente",
-          capacities: ["Obtiene información"],
-          performanceId: "PERF-01",
-          precisedPerformance: "Adecúa el texto oral",
-          isPrimary: true,
-        },
-      ],
-      didacticMoments: [
-        {
-          momentType: "START",
-          allocatedMinutes: 15,
-          pedagogicalProcesses: "Motivación y saberes previos",
-          activitiesDescription: "El docente presenta una situación retadora",
-          duaNotes: "Apoyo visual",
-          orderIndex: 1,
-        },
-      ],
-      instrument: {
-        instrumentType: "CHECKLIST",
-        evaluatedEvidence: "Ficha de cotejo",
-        appendTableToDocument: true,
-        criteria: [
-          {
-            criterionNumber: 1,
-            description: "Adecúa su postura con argumentos claros",
-          },
-        ],
-      },
+  it("preserves the actual IA moments and form metadata through preview and save", () => {
+    const form = {
+      ...initialFormValues,
+      areaId: "MAT",
+      sessionTitle: "Cantidad y comercio",
     };
-
-    const entity = SessionMapper.toDomainEntity(responseDto);
-
-    expect(entity.id).toBe("b4550ef8-32a7-47b2-a63e-f1b212345678");
-    expect(entity.areaName).toBe("Comunicación");
-    expect(entity.sessionTitle).toBe("El debate");
-    expect(entity.didacticMoments[0].momentType).toBe("START");
-    expect(entity.didacticMoments[0].allocatedMinutes).toBe(15);
-    expect(entity.instrument.criteria).toHaveLength(1);
-    expect(entity.instrument.criteria[0].criterionNumber).toBe(1);
+    const preview = SessionMapper.toDomainEntity(generatedSession, form);
+    expect(preview.sessionTitle).toBe(form.sessionTitle);
+    expect(preview.areaId).toBe("MAT");
+    expect(preview.didacticMoments[0].activitiesDescription).toBe(
+      generatedSession.moments[0].activitiesDescription,
+    );
+    expect(preview.instrument.criteria.map((c) => c.description)).toEqual(
+      generatedSession.evaluationCriteria,
+    );
+    const saved = SessionMapper.toSaveSessionDTO(preview);
+    expect(saved.moments).toEqual(
+      generatedSession.moments.map((moment, index) => ({
+        ...moment,
+        orderIndex: index + 1,
+      })),
+    );
+  });
+  it("orders by moment type instead of provider array position", () => {
+    const preview = SessionMapper.toDomainEntity(
+      { ...generatedSession, moments: [...generatedSession.moments].reverse() },
+      initialFormValues,
+    );
+    expect(preview.didacticMoments.map((m) => m.momentType)).toEqual([
+      "START",
+      "DEVELOPMENT",
+      "CLOSING",
+    ]);
+  });
+  it("rejects incomplete responses rather than inventing content", () => {
+    expect(() =>
+      SessionMapper.toDomainEntity(
+        { ...generatedSession, moments: [] },
+        initialFormValues,
+      ),
+    ).toThrow();
+    expect(() =>
+      SessionMapper.toDomainEntity(
+        { ...generatedSession, evaluationCriteria: [] },
+        initialFormValues,
+      ),
+    ).toThrow();
+  });
+  it("rejects a response for a different duration", () => {
+    expect(() =>
+      SessionMapper.toDomainEntity(generatedSession, {
+        ...initialFormValues,
+        pedagogicalDuration: "MINUTES_45",
+      }),
+    ).toThrow();
   });
 });

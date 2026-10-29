@@ -4,7 +4,7 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Coins, Sparkles, LogOut } from "lucide-react";
 
 export function TeacherNavbar() {
-  const { user, institution, wallet } = useTeacherContext();
+  const { user, institution, wallet, walletAvailable } = useTeacherContext();
 
   const getInitials = (name: string) => {
     return name
@@ -15,9 +15,12 @@ export function TeacherNavbar() {
       .toUpperCase();
   };
 
-  const handleLogout = () => {
-    authRepository.logout();
-    window.location.reload();
+  const handleLogout = async () => {
+    try {
+      await authRepository.logout();
+    } finally {
+      window.location.reload();
+    }
   };
 
   return (
@@ -46,7 +49,9 @@ export function TeacherNavbar() {
       <div className="flex items-center gap-4">
         {/* Chip de Créditos / Plan */}
         <div className="hidden sm:flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 shadow-xs">
-          {wallet.isUnlimited ? (
+          {!walletAvailable ? (
+            <span className="text-xs">Saldo no disponible</span>
+          ) : wallet.isUnlimited ? (
             <Badge variant="success" className="gap-1 text-[11px] font-bold">
               <Sparkles className="h-3 w-3 text-emerald-600" />
               Ilimitado
@@ -64,7 +69,7 @@ export function TeacherNavbar() {
         <div className="flex items-center gap-2.5 border-r pr-3">
           <div className="text-right">
             <p className="text-xs font-bold text-slate-900 leading-tight">
-              {user.fullName}
+              {institution.teacherFullName || user.fullName || "Cuenta"}
             </p>
             <p className="text-[10px] text-slate-500 font-medium">
               {user.role === "SUPERADMIN"
@@ -73,7 +78,9 @@ export function TeacherNavbar() {
             </p>
           </div>
           <div className="h-8 w-8 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center font-bold text-xs text-slate-700 shadow-xs">
-            {getInitials(user.fullName)}
+            {getInitials(
+              institution.teacherFullName || user.fullName || "Cuenta",
+            )}
           </div>
         </div>
 

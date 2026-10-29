@@ -4,7 +4,10 @@ import {
 } from "../domain/llm-service.interface.js";
 import { PedagogicalDurationType } from "../domain/pedagogical-duration.vo.js";
 import { ICurriculumRepository } from "../../curriculum/domain/curriculum.repository.interface.js";
-import { NotFoundError } from "../../../core/errors/app-error.js";
+import {
+  NotFoundError,
+  ValidationError,
+} from "../../../core/errors/app-error.js";
 
 export interface PreviewSessionDTO {
   areaId: string;
@@ -17,6 +20,7 @@ export interface PreviewSessionDTO {
   hasDuaInclusion: boolean;
   selectedCompetencyIds: string[];
   materialsAndResources: string[];
+  duaCategories?: string[];
 }
 
 export class PreviewSessionUseCase {
@@ -36,6 +40,26 @@ export class PreviewSessionUseCase {
       throw new NotFoundError(`Área curricular no encontrada: ${dto.areaId}`);
     }
 
+    if (
+      dto.selectedCompetencyIds.some(
+        (id) => !tree.competencies.some((c) => c.id === id),
+      )
+    ) {
+      throw new NotFoundError(
+        "Alguna competencia seleccionada no pertenece al área.",
+      );
+    }
+    if (
+      tree.competencies.some(
+        (c) =>
+          dto.selectedCompetencyIds.includes(c.id) &&
+          c.performances.length === 0,
+      )
+    ) {
+      throw new ValidationError(
+        "Faltan desempeños en el catálogo para el grado seleccionado.",
+      );
+    }
     const selectedCompetencies = tree.competencies
       .filter((c) => dto.selectedCompetencyIds.includes(c.id))
       .map((c) => ({
@@ -59,6 +83,8 @@ export class PreviewSessionUseCase {
       crossCuttingTheme: dto.crossCuttingTheme,
       hasDuaInclusion: dto.hasDuaInclusion,
       selectedCompetencies,
+      materialsAndResources: dto.materialsAndResources,
+      duaCategories: dto.hasDuaInclusion ? (dto.duaCategories ?? []) : [],
     });
   }
 }

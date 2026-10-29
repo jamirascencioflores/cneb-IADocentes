@@ -3,7 +3,7 @@ import { LoginCredentials, LoginResponseDto } from "../domain/auth.types";
 
 export interface IAuthRepository {
   login(credentials: LoginCredentials): Promise<LoginResponseDto>;
-  logout(): void;
+  logout(): Promise<void>;
   isAuthenticated(): boolean;
 }
 
@@ -25,8 +25,12 @@ export class HttpAuthRepository implements IAuthRepository {
     return data;
   }
 
-  logout(): void {
-    localStorage.removeItem("cneb_access_token");
+  async logout(): Promise<void> {
+    try {
+      await httpClient.post("/auth/logout");
+    } finally {
+      localStorage.removeItem("cneb_access_token");
+    }
   }
 
   isAuthenticated(): boolean {

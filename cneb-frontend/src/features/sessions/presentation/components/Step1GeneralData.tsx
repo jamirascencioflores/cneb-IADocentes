@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useState } from "react";
+import { useCurriculumAreas } from "@/features/curriculum/application/useCurriculum";
 
 interface Step1Props {
   form: UseFormReturn<SessionDraftFormData>;
@@ -44,6 +45,7 @@ const DURATIONS: { id: PedagogicalDuration; label: string }[] = [
 ];
 
 export function Step1GeneralData({ form }: Step1Props) {
+  const areas = useCurriculumAreas();
   const {
     register,
     watch,
@@ -101,8 +103,18 @@ export function Step1GeneralData({ form }: Step1Props) {
         <label className="text-xs font-semibold text-slate-700">
           Área Curricular Oficial (MINEDU):
         </label>
+        {areas.isPending && <p role="status">Cargando áreas…</p>}
+        {areas.isError && (
+          <p role="alert">
+            No se pudieron cargar las áreas.{" "}
+            <button type="button" onClick={() => void areas.refetch()}>
+              Reintentar
+            </button>
+          </p>
+        )}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          {AREAS.map(({ id, name, icon: Icon }) => {
+          {(areas.data ?? []).map(({ id, name }) => {
+            const Icon = AREAS.find((area) => area.id === id)?.icon ?? BookOpen;
             const isSelected = currentArea === id;
             return (
               <button

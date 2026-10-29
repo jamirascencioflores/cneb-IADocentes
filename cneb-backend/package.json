@@ -3,11 +3,12 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "tsx watch src/presentation/server.ts",
-    "build": "tsup src/presentation/server.ts --format esm --clean --dts",
+    "build": "pnpm typecheck && tsup src/presentation/server.ts --format esm --clean",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "db:setup": "tsx src/infrastructure/database/scripts/run-migrations-and-seeds.ts"
+    "db:setup": "tsx src/infrastructure/database/scripts/run-migrations-and-seeds.ts",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
