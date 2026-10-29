@@ -19,22 +19,27 @@ describe("HttpSessionRepository", () => {
     repository = new HttpSessionRepository();
   });
 
-  it("generatePreview debe invocar /sessions/preview con el payload transformado", async () => {
-    const mockApiResponse = generatedSession;
+  it("generates a persisted session with its institutional identity and idempotency key", async () => {
+    const mockApiResponse = { ...generatedSession, id: "00000000-0000-4000-8000-000000000001",
+      institutionalProfile: { teacherFullName: "Ana Docente", specialty: "Comunicación",
+        schoolName: "Escuela", ugel: "UGEL 01", dre: "DRE", principalName: null, badgeUrl: null, signatureUrl: null } };
 
     vi.mocked(httpClient.post).mockResolvedValueOnce({ data: mockApiResponse });
 
-    const result = await repository.generatePreview(initialFormValues);
+    const result = await repository.generatePreview(initialFormValues, "request-1");
 
     expect(httpClient.post).toHaveBeenCalledTimes(1);
     expect(httpClient.post).toHaveBeenCalledWith(
-      "/sessions/preview",
+      "/sessions/generate",
       expect.objectContaining({
         areaId: "COM",
         gradeLevel: "THIRD",
       }),
+      { headers: { "Idempotency-Key": "request-1" } },
     );
     expect(result.areaId).toBe("COM");
+    expect(result.id).toBe(mockApiResponse.id);
+    expect(result.institutionalProfile).toEqual(mockApiResponse.institutionalProfile);
     expect(result.didacticMoments[0].activitiesDescription).toBe(
       generatedSession.moments[0].activitiesDescription,
     );

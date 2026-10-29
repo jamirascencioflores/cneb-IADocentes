@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { useSessionDraftForm } from "../../application/useSessionDraftForm";
 import { useSessionPreview } from "../../application/useSessionPreview";
 import { useExportDocx } from "../../application/useExportDocx";
-import { sessionRepository } from "../../infrastructure/http-session.repository";
 import { SessionPreviewEntity } from "../../domain/session.types";
 import { Step1GeneralData } from "../components/Step1GeneralData";
 import { Step2Competencies } from "../components/Step2Competencies";
@@ -13,10 +12,6 @@ import { RefreshCw, RotateCcw } from "lucide-react";
 import { DUA_CATEGORY_DETAILS } from "@/features/curriculum/domain/cneb-labels";
 import { useCurriculum } from "@/features/curriculum/application/useCurriculum";
 import { reconcileCompetencies } from "@/features/curriculum/application/reconcile-competencies";
-import {
-  persistSnapshot,
-  type SavedSnapshot,
-} from "../../application/session-snapshot";
 import { ProblemDetailsDialog } from "@/shared/components/feedback/ProblemDetailsDialog";
 import { ProblemDetails } from "@/shared/types/problem-details.types";
 import { TeacherNavbar } from "@/features/profile/presentation/components/TeacherNavbar";
@@ -87,6 +82,7 @@ const initialAiContent = {
 
 export function SessionPlannerPage() {
   const {
+    user,
     institution,
     profileMissing,
     profileMessage,
@@ -94,11 +90,11 @@ export function SessionPlannerPage() {
     error: contextError,
   } = useTeacherContext();
   const form = useSessionDraftForm();
-  const previewMutation = useSessionPreview();
+  const previewMutation = useSessionPreview(user.id);
   const exportMutation = useExportDocx();
 
   const [aiGeneratedData, setAiGeneratedData] =
-    useState<Partial<SessionPreviewEntity> | null>(null);
+    useState<SessionPreviewEntity | null>(null);
 
   const [activeProblem, setActiveProblem] = useState<ProblemDetails | null>(
     null,
@@ -108,9 +104,9 @@ export function SessionPlannerPage() {
   const currentAreaId = formValues.areaId;
 
   const curriculum = useCurriculum(currentAreaId, formValues.gradeLevel);
-  const savedSnapshot = useRef<SavedSnapshot | null>(null);
+  const recentGeneration = useRef<{ fingerprint: string; completedAt: number } | null>(null);
+  const generating = useRef(false);
   const exporting = useRef(false);
-  const generationSequence = useRef(0);
   const [generatedFor, setGeneratedFor] = useState<string | null>(null);
   const formFingerprint = JSON.stringify(formValues);
   const generationIsCurrent = generatedFor === formFingerprint;
@@ -272,19 +268,33 @@ export function SessionPlannerPage() {
       },
     };
   }, [formValues, aiGeneratedData, curriculum.data]);
+  // A persisted result always keeps its original pedagogical data and identity.
+  const displayedPreview = aiGeneratedData ?? livePreviewData;
 
   const handleRefreshPreview = () =>
     form.handleSubmit(async (data) => {
+      if (generating.current || profileMissing || contextLoading || contextError) return;
+      const fingerprint = JSON.stringify(data);
+      if (recentGeneration.current?.fingerprint === fingerprint
+        && Date.now() - recentGeneration.current.completedAt < 500) return;
+      generating.current = true;
       try {
-        const sequence = ++generationSequence.current;
         const snapshot = JSON.stringify(data);
+        const catalog = curriculum.data;
         const generated = await previewMutation.mutateAsync(data);
-        if (
-          sequence !== generationSequence.current ||
-          snapshot !== JSON.stringify(form.getValues())
-        )
-          return;
-        setAiGeneratedData(generated);
+        recentGeneration.current = { fingerprint: snapshot, completedAt: Date.now() };
+        setAiGeneratedData({
+          ...generated,
+          areaName: catalog?.areaName ?? generated.areaName,
+          competencies: generated.competencies.map((competency) => {
+            const official = catalog?.competencies.find((item) => item.id === competency.competencyId);
+            return {
+              ...competency,
+              competencyTitle: official?.title ?? competency.competencyTitle,
+              capacities: official?.capacities.map((capacity) => capacity.title) ?? competency.capacities,
+            };
+          }),
+        });
         setGeneratedFor(snapshot);
       } catch (err: unknown) {
         if (err && typeof err === "object" && "problem" in err) {
@@ -297,7 +307,7 @@ export function SessionPlannerPage() {
             detail: err instanceof Error ? err.message : "Intenta nuevamente.",
           });
         }
-      }
+      } finally { generating.current = false; }
     })();
 
   const [isSaving, setIsSaving] = useState(false);
@@ -305,26 +315,16 @@ export function SessionPlannerPage() {
   const handleExport = async () => {
     if (
       exporting.current ||
-      !generationIsCurrent ||
-      !curriculum.data ||
-      contextError ||
-      contextLoading ||
       profileMissing
     )
       return;
     exporting.current = true;
     setIsSaving(true);
     try {
-      if (!(await form.trigger())) return;
-      const snapshot = await persistSnapshot(
-        livePreviewData,
-        savedSnapshot.current,
-        (preview) => sessionRepository.saveSession(preview),
-      );
-      savedSnapshot.current = snapshot;
+      if (!aiGeneratedData?.id) return;
       await exportMutation.mutateAsync({
-        sessionId: snapshot.id,
-        sessionTitle: livePreviewData.sessionTitle,
+        sessionId: aiGeneratedData.id,
+        sessionTitle: aiGeneratedData.sessionTitle,
       });
     } catch (err: unknown) {
       if (err && typeof err === "object" && "problem" in err) {
@@ -360,7 +360,13 @@ export function SessionPlannerPage() {
             reintentar.
           </p>
         )}
-        {!generationIsCurrent && (
+        {aiGeneratedData && !generationIsCurrent && (
+          <p role="status" className="text-sm text-amber-800">
+            Contenido desactualizado: la sesión visible corresponde al estado anterior del formulario
+            y sigue disponible para descargar. Genera nuevamente para aplicar los cambios actuales.
+          </p>
+        )}
+        {!aiGeneratedData && (
           <p role="status" className="text-sm text-amber-800">
             Borrador: genera o actualiza la sesión con IA antes de descargar.
             Los cambios requieren una nueva generación.
@@ -383,6 +389,8 @@ export function SessionPlannerPage() {
           </div>
 
           <form className="space-y-6">
+            <fieldset disabled={previewMutation.isPending} aria-busy={previewMutation.isPending}
+              className="min-w-0 space-y-6">
             <Step1GeneralData form={form} />
             <Step2Competencies form={form} />
             <Step3DuaAndInstrument form={form} />
@@ -394,10 +402,7 @@ export function SessionPlannerPage() {
                 size="sm"
                 onClick={() => {
                   form.reset();
-                  generationSequence.current += 1;
-                  setAiGeneratedData(null);
-                  setGeneratedFor(null);
-                  savedSnapshot.current = null;
+                  recentGeneration.current = null;
                 }}
                 className="gap-1.5 text-xs text-slate-600"
               >
@@ -411,6 +416,7 @@ export function SessionPlannerPage() {
                 onClick={handleRefreshPreview}
                 disabled={
                   previewMutation.isPending ||
+                  profileMissing || contextLoading || !!contextError ||
                   curriculum.isPending ||
                   curriculum.isError ||
                   !formValues.selectedCompetencies.length
@@ -425,24 +431,24 @@ export function SessionPlannerPage() {
                   : "Actualizar Vista Previa en Vivo"}
               </Button>
             </div>
+            </fieldset>
           </form>
         </div>
 
         {/* Panel Derecho: Vista A4 */}
         <div className="lg:col-span-5 lg:sticky lg:top-16 h-[calc(100vh-5rem)]">
           <MineduA4Document
-            data={livePreviewData}
-            teacherName={institution.teacherFullName}
-            schoolName={institution.schoolName}
-            ugelText={`${institution.drelm} • ${institution.ugel}`}
-            isLoading={previewMutation.isPending}
+            data={displayedPreview}
+            teacherName={aiGeneratedData?.institutionalProfile?.teacherFullName ?? institution.teacherFullName}
+            schoolName={aiGeneratedData?.institutionalProfile?.schoolName ?? institution.schoolName}
+            ugelText={aiGeneratedData?.institutionalProfile
+              ? `${aiGeneratedData.institutionalProfile.dre} • ${aiGeneratedData.institutionalProfile.ugel}`
+              : `${institution.drelm} • ${institution.ugel}`}
+            isLoading={previewMutation.isPending && !aiGeneratedData}
             isDownloading={exportMutation.isPending || isSaving}
             canDownload={
-              generationIsCurrent &&
-              !profileMissing &&
-              !contextError &&
-              !contextLoading &&
-              curriculum.isSuccess
+              !!aiGeneratedData?.id &&
+              !profileMissing
             }
             onDownload={handleExport}
           />

@@ -3,10 +3,8 @@ import {
   UnauthorizedError,
   ForbiddenError,
 } from "../../core/errors/app-error.js";
-import {
-  JwtTokenService,
-  TokenPayload,
-} from "../../modules/identity/infrastructure/security/token.service.js";
+import { TokenPayload } from "../../modules/identity/infrastructure/security/token.service.js";
+import { authSessions } from "../../modules/identity/infrastructure/security/auth-session.instance.js";
 import { UserRole } from "../../modules/identity/domain/user.entity.js";
 
 declare module "fastify" {
@@ -14,8 +12,6 @@ declare module "fastify" {
     user?: TokenPayload;
   }
 }
-
-const tokenService = new JwtTokenService();
 
 export async function authenticate(
   request: FastifyRequest,
@@ -29,11 +25,14 @@ export async function authenticate(
   }
 
   const token = authHeader.substring(7);
-  try {
-    const payload = tokenService.verifyAccessToken(token);
-    request.user = payload;
-  } catch {
-    throw new UnauthorizedError("Token de acceso inválido o expirado.");
+  request.user = await authSessions.validate(token, "access");
+  const allowed = new Set([
+    "GET /api/v1/auth/me", "POST /api/v1/auth/change-password",
+    "POST /api/v1/auth/refresh", "POST /api/v1/auth/logout",
+  ]);
+  if (request.user.must_change_password
+    && !allowed.has(request.method + " " + request.routeOptions.url)) {
+    throw new ForbiddenError("Debes cambiar tu contraseña antes de continuar.");
   }
 }
 

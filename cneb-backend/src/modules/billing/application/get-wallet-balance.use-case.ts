@@ -15,7 +15,7 @@ export class GetWalletBalanceUseCase {
       isUnlimited: wallet.isUnlimited,
       planType: wallet.planType,
       expiresAt: wallet.expiresAt,
-      canExport: wallet.canExportSession(),
+      canGenerate: wallet.canGenerateSession(),
     };
   }
 }

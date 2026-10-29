@@ -6,6 +6,8 @@ export interface UserProps {
   passwordHash: string;
   role: UserRole;
   isActive: boolean;
+  mustChangePassword?: boolean;
+  tokenVersion?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +34,8 @@ export class User {
   public get passwordHash(): string {
     return this.props.passwordHash;
   }
+  public get mustChangePassword(): boolean { return this.props.mustChangePassword ?? false; }
+  public get tokenVersion(): number { return this.props.tokenVersion ?? 0; }
 
   public isSuperAdmin(): boolean {
     return this.props.role === "SUPERADMIN";

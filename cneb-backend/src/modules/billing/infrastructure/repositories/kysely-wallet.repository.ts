@@ -7,6 +7,7 @@ import { IWalletRepository } from "../../domain/wallet.repository.interface.js";
 import {
   CreditWallet,
   TransactionType,
+  SubscriptionPlan,
 } from "../../domain/credit-wallet.entity.js";
 
 export class KyselyWalletRepository implements IWalletRepository {
@@ -87,6 +88,15 @@ export class KyselyWalletRepository implements IWalletRepository {
       transactionType: TransactionType;
       referenceSessionId?: string | null;
       note?: string | null;
+      actorUserId?: string;
+      balanceBefore?: number;
+      balanceAfter?: number;
+      planTypeBefore?: SubscriptionPlan;
+      planTypeAfter?: SubscriptionPlan;
+      expiresAtBefore?: Date | null;
+      expiresAtAfter?: Date | null;
+      isUnlimitedBefore?: boolean;
+      isUnlimitedAfter?: boolean;
     },
     tx?: unknown,
   ): Promise<void> {
@@ -100,6 +110,16 @@ export class KyselyWalletRepository implements IWalletRepository {
         transaction_type: params.transactionType as TransactionTypeEnum,
         reference_session_id: params.referenceSessionId ?? null,
         note: params.note ?? null,
+        actor_user_id: params.actorUserId ?? null,
+        balance_before: params.balanceBefore ?? null,
+        balance_after: params.balanceAfter ?? null,
+        plan_type_before: params.planTypeBefore ?? null,
+        plan_type_after: params.planTypeAfter ?? null,
+        expires_at_before: params.expiresAtBefore ?? null,
+        expires_at_after: params.expiresAtAfter ?? null,
+        is_unlimited_before: params.isUnlimitedBefore ?? null,
+        is_unlimited_after: params.isUnlimitedAfter ?? null,
+        generation_request_id: null,
       })
       .execute();
   }

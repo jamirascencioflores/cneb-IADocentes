@@ -1,0 +1,23 @@
+import { afterEach, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { LoginForm } from "./LoginForm";
+vi.mock("../../infrastructure/http-auth.repository", () => ({ authRepository: { login: vi.fn() } }));
+afterEach(cleanup);
+it("starts empty without public registration and toggles visibility by keyboard without changing the password", async () => {
+  const user = userEvent.setup();
+  render(<LoginForm onSuccess={vi.fn()} />);
+  const password = screen.getByLabelText("Contraseña");
+  expect(password).toHaveValue("");
+  expect(password).toHaveAttribute("autocomplete", "current-password");
+  expect(screen.queryByRole("button", { name: /registrar|demo/i })).not.toBeInTheDocument();
+  await user.type(password, "UnaClaveDePrueba123!");
+  const toggle = screen.getByRole("button", { name: "Mostrar contraseña" });
+  toggle.focus();
+  await user.keyboard("{Enter}");
+  expect(password).toHaveAttribute("type", "text");
+  expect(password).toHaveValue("UnaClaveDePrueba123!");
+  await user.click(screen.getByRole("button", { name: "Ocultar contraseña" }));
+  expect(password).toHaveAttribute("type", "password");
+  expect(password).toHaveValue("UnaClaveDePrueba123!");
+});

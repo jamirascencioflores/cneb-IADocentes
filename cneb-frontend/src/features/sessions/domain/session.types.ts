@@ -66,6 +66,11 @@ export type EvaluationCriterionItem = z.infer<
 // Entidad de previsualización de documento completo
 export const SessionPreviewEntitySchema = z.object({
   id: z.string().uuid().optional(),
+  institutionalProfile: z.object({
+    teacherFullName: z.string(), specialty: z.string(), schoolName: z.string(),
+    ugel: z.string(), dre: z.string(), principalName: z.string().nullable(),
+    badgeUrl: z.string().nullable(), signatureUrl: z.string().nullable(),
+  }).optional(),
   areaId: z.string().min(1),
   areaName: z.string().min(1),
   gradeLevel: GradeLevelSchema,

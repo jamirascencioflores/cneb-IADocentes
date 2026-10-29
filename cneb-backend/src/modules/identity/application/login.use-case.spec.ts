@@ -2,14 +2,14 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { LoginUseCase } from "./login.use-case.js";
 import { IUserRepository } from "../domain/user.repository.interface.js";
 import { IHashService } from "../infrastructure/security/hash.service.js";
-import { ITokenService } from "../infrastructure/security/token.service.js";
+import { ISessionIssuer } from "./auth-session.service.js";
 import { User } from "../domain/user.entity.js";
 import { UnauthorizedError } from "../../../core/errors/app-error.js";
 
 describe("LoginUseCase", () => {
   let userRepository: IUserRepository;
   let hashService: IHashService;
-  let tokenService: ITokenService;
+  let tokenService: ISessionIssuer;
   let useCase: LoginUseCase;
 
   beforeEach(() => {
@@ -24,10 +24,10 @@ describe("LoginUseCase", () => {
       compare: vi.fn(),
     };
     tokenService = {
-      generateAccessToken: vi.fn().mockReturnValue("mock-access-token"),
-      generateRefreshToken: vi.fn().mockReturnValue("mock-refresh-token"),
-      verifyAccessToken: vi.fn(),
-      verifyRefreshToken: vi.fn(),
+      issue: vi.fn().mockResolvedValue({
+        accessToken: "mock-access-token", refreshToken: "mock-refresh-token",
+        user: { id: "user-123", email: "profesor@colegio.edu.pe", role: "TEACHER", mustChangePassword: false },
+      }),
     };
     useCase = new LoginUseCase(userRepository, hashService, tokenService);
   });

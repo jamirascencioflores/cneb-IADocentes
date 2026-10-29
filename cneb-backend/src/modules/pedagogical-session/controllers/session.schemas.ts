@@ -97,3 +97,23 @@ export const saveSessionSchema = z
       message: "No se permiten competencias duplicadas.",
     },
   );
+
+export const generateSessionSchema = previewSessionSchema.extend({
+  crossCuttingValues: z.string().min(3),
+  selectedCompetencies: z.array(z.object({
+    competencyId: z.string().min(1),
+    performanceId: z.string().min(1),
+    precisedPerformance: z.string().min(10),
+    isPrimary: z.boolean(),
+  }).strict()).min(1),
+  instrumentConfig: z.object({
+    instrumentType: z.enum(["CHECKLIST", "RUBRIC", "SELF_EVALUATION", "OBSERVATION_GUIDE", "NONE"]),
+    appendTableToDocument: z.boolean(),
+  }).strict(),
+}).strict().refine((data) => {
+  const ids = data.selectedCompetencies.map((c) => c.competencyId);
+  return new Set(ids).size === ids.length
+    && ids.length === data.selectedCompetencyIds.length
+    && ids.every((id) => data.selectedCompetencyIds.includes(id));
+}, { message: "Las competencias seleccionadas deben coincidir y no repetirse." });
+export type GenerateSessionInput = z.infer<typeof generateSessionSchema>;

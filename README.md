@@ -25,6 +25,9 @@ Edita `cneb-backend/.env`: configura una base de datos **vacía**, tu API key y 
 
 ```sh
 pnpm --dir cneb-backend db:setup
+# Revisar destino y migraciones antes de aplicar la etapa 1:
+pnpm --dir cneb-backend run db:migrate
+pnpm --dir cneb-backend run db:migrate --apply --baseline-existing
 pnpm --dir cneb-backend dev
 ```
 
@@ -38,15 +41,13 @@ Abre `http://localhost:5173`. El proxy de Vite envía `/api` al backend en el pu
 
 `db:setup` crea el esquema inicial y carga datos de muestra; **se ejecuta una sola vez sobre una base vacía**. No es un gestor de migraciones incrementales y no debe repetirse sobre una base ya inicializada.
 
-## Primer uso
+## Primer uso y etapa 1
 
-Crea un docente con `POST /api/v1/auth/register`, usando un cuerpo JSON como:
+El registro público está eliminado. Solo SUPERADMIN administrará cuentas y perfiles institucionales mediante la API de la etapa 2. El docente consulta su perfil; una cuenta sin perfil no puede generar ni exportar.
 
-```json
-{ "email": "docente@example.com", "password": "UnaClaveLargaYUnica123!" }
-```
+Un crédito equivale a una generación validada y persistida. El backend guarda sesión, identidad institucional histórica y débito de forma atómica. Las descargas repetidas no cobran ni guardan contenido del navegador. Regenerar con IA consume otro crédito cuando termina correctamente. Las cuentas LIFETIME_FREE coherentes no consumen saldo.
 
-Inicia sesión desde la interfaz y completa el perfil institucional. Selecciona área, grado y competencias, genera la sesión y descarga el Word. Cada exportación válida descuenta un crédito, excepto en planes ilimitados. Si cambias el formulario debes generar nuevamente; el contenido modificado se guarda como una nueva versión antes de exportarlo. Una descarga repetida sin cambios reutiliza la misma sesión, pero sigue consumiendo un crédito.
+Para una base existente, usar el nuevo ejecutor incremental después de revisar destino y migraciones; no repetir db:setup. Los comandos de migración y creación del primer SUPERADMIN, limitaciones históricas y pruebas están en [la entrega de etapa 1](Docs/ETAPA-1.md). No se implementó todavía el panel administrativo ni la pantalla de cambio de contraseña.
 
 El catálogo inicial es parcial: incluye Comunicación, EPT y Matemática y desempeños de algunos grados. La interfaz muestra únicamente desempeños disponibles para el grado elegido. Completa el catálogo con contenido verificado antes de ofrecer otros grados; la aplicación no inventa desempeños faltantes.
 
@@ -74,12 +75,12 @@ Las pruebas cubren contratos de API, validación de contenido generado, perfil, 
 - `GET /api/v1/auth/me`: `{ "user": { "sub", "email", "role" } }`.
 - `POST /api/v1/auth/refresh`: usa la cookie HttpOnly y devuelve `{ "accessToken" }`.
 - `POST /api/v1/auth/logout`: elimina la cookie; un JWT ya emitido expira naturalmente.
-- `GET/PUT /api/v1/profile/institutional`: datos institucionales del usuario autenticado.
-- `GET /api/v1/wallets/me`: `balance`, `isUnlimited`, `planType`, `expiresAt`, `canExport`.
+- `GET /api/v1/profile/institutional`: consulta institucional del usuario autenticado; no existe PUT docente.
+- `GET /api/v1/wallets/me`: `balance`, `isUnlimited`, `planType`, `expiresAt`, `canGenerate`.
 - `GET /api/v1/curriculum/areas/:areaId/tree?grade_level=THIRD`: catálogo por área y grado.
-- `POST /api/v1/sessions/preview`: contenido IA con `moments` y `evaluationCriteria`; los datos del formulario permanecen en el cliente.
-- `POST /api/v1/sessions`: guarda una sesión validada y devuelve su `id`.
-- `GET /api/v1/sessions/:id/export-docx`: verifica propiedad y saldo, genera el documento y debita el crédito.
+- `POST /api/v1/sessions/generate`: exige Idempotency-Key; genera, valida, persiste y descuenta un crédito. Devuelve id, contenido e identidad institucional del backend.
+- `GET /api/v1/sessions/:id/export-docx`: verifica propiedad, perfil y copia institucional histórica; descarga sin débito.
+- `POST /api/v1/auth/change-password`: cambia la contraseña e invalida sesiones anteriores, emitiendo una nueva.
 
 ## Alcance y despliegue
 

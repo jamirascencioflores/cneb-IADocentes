@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { LogController } from "fastify";
 import { profileRoutes } from "./http/routes/profile/profile.routes.js";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
@@ -32,12 +32,15 @@ const getLoggerConfig = () => {
 export async function buildServer() {
   const server = Fastify({
     logger: getLoggerConfig(),
+    // Passwords, bearer tokens and cookies must never appear in application logs.
+    logController: new LogController({ disableRequestLogging: true }),
   });
 
   await server.register(helmet, { contentSecurityPolicy: true });
   await server.register(cors, {
     origin: env.CORS_ORIGIN,
     credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key"],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   });
   await server.register(cookie, {

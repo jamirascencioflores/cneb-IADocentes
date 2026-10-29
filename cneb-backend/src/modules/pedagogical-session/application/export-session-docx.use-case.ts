@@ -3,13 +3,14 @@ import { DatabaseSchema } from "../../../infrastructure/database/types.js";
 import {
   NotFoundError,
   ForbiddenError,
+  ConflictError,
 } from "../../../core/errors/app-error.js";
-import { IWalletRepository } from "../../billing/domain/wallet.repository.interface.js";
 import {
   IDocxGeneratorService,
   DocxSessionData,
 } from "../domain/docx-generator.interface.js";
 import { InstitutionalProfile } from "../../identity/domain/institutional-profile.entity.js";
+import { institutionalSnapshotSchema } from "../../identity/domain/institutional-snapshot.js";
 
 export interface ExportSessionDocxDTO {
   sessionId: string;
@@ -18,7 +19,6 @@ export interface ExportSessionDocxDTO {
 
 export class ExportSessionDocxUseCase {
   constructor(
-    private readonly walletRepository: IWalletRepository,
     private readonly docxGenerator: IDocxGeneratorService,
     private readonly db: Kysely<DatabaseSchema>,
   ) {}
@@ -48,7 +48,6 @@ export class ExportSessionDocxUseCase {
       .selectFrom("institutional_profiles")
       .selectAll()
       .where("user_id", "=", dto.userId)
-      .where("is_default", "=", true)
       .executeTakeFirst();
 
     if (!profileRow || profileRow.user_id !== dto.userId) {
@@ -57,17 +56,14 @@ export class ExportSessionDocxUseCase {
       );
     }
 
+    const snapshot = institutionalSnapshotSchema.safeParse(session.institutional_snapshot);
+    if (!snapshot.success) throw new ConflictError(
+      "La sesión histórica no tiene una copia institucional verificable. El administrador debe revisar su identidad original.",
+    );
     const profile = InstitutionalProfile.reconstitute({
+      ...snapshot.data,
       id: profileRow.id,
       userId: profileRow.user_id,
-      teacherFullName: profileRow.teacher_full_name,
-      specialty: profileRow.specialty,
-      schoolName: profileRow.school_name,
-      ugel: profileRow.ugel,
-      dre: profileRow.dre,
-      principalName: profileRow.principal_name,
-      badgeUrl: profileRow.badge_url,
-      signatureUrl: profileRow.signature_url,
       isDefault: profileRow.is_default,
       createdAt: profileRow.created_at,
     });
@@ -145,34 +141,6 @@ export class ExportSessionDocxUseCase {
 
     // 4. Compilación del Word en memoria
     const fileBuffer = await this.docxGenerator.compile(docxData, profile);
-
-    // 5. Transacción atómica de débito con bloqueo pesimista
-    await this.db.transaction().execute(async (trx) => {
-      const wallet = await this.walletRepository.findByUserIdForUpdate(
-        dto.userId,
-        trx,
-      );
-      if (!wallet) {
-        throw new NotFoundError("No se encontró billetera de créditos activa.");
-      }
-
-      const hadCreditsBefore = wallet.balance;
-      wallet.debitForSessionExport();
-      await this.walletRepository.update(wallet, trx);
-
-      if (!wallet.isUnlimited) {
-        await this.walletRepository.recordTransaction(
-          {
-            walletId: wallet.id,
-            amount: -1,
-            transactionType: "SESSION_EXPORT_DEBIT",
-            referenceSessionId: session.id,
-            note: `Débito por exportación DOCX (Saldo: ${hadCreditsBefore} -> ${wallet.balance})`,
-          },
-          trx,
-        );
-      }
-    });
 
     const safeTitle = session.session_title
       .replace(/[^a-zA-Z0-9_-]/g, "_")

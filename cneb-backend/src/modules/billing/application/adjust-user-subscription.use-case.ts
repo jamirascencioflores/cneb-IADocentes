@@ -1,11 +1,12 @@
 import { Kysely } from "kysely";
 import { DatabaseSchema } from "../../../infrastructure/database/types.js";
-import { NotFoundError } from "../../../core/errors/app-error.js";
+import { NotFoundError, ValidationError } from "../../../core/errors/app-error.js";
 import { IWalletRepository } from "../domain/wallet.repository.interface.js";
 import { SubscriptionPlan } from "../domain/credit-wallet.entity.js";
 
 export interface AdjustSubscriptionDTO {
   targetUserId: string;
+  actorUserId: string;
   planType?: SubscriptionPlan | undefined;
   balanceAdjustment?: number | undefined;
   isUnlimited?: boolean | undefined;
@@ -26,6 +27,9 @@ export class AdjustUserSubscriptionUseCase {
     isUnlimited: boolean;
     expiresAt: Date | null;
   }> {
+    if (!dto.note?.trim() || dto.note.trim().length > 255)
+      throw new ValidationError("El motivo del ajuste es obligatorio y admite hasta 255 caracteres.");
+    const note = dto.note.trim();
     return this.db.transaction().execute(async (trx) => {
       const wallet = await this.walletRepository.findByUserIdForUpdate(
         dto.targetUserId,
@@ -38,6 +42,7 @@ export class AdjustUserSubscriptionUseCase {
       }
 
       const prevBalance = wallet.balance;
+      const before = { plan: wallet.planType, expiry: wallet.expiresAt, unlimited: wallet.isUnlimited };
       wallet.applyManualAdjustment(
         dto.balanceAdjustment ?? 0,
         dto.planType,
@@ -47,15 +52,20 @@ export class AdjustUserSubscriptionUseCase {
 
       await this.walletRepository.update(wallet, trx);
 
-      if (dto.balanceAdjustment !== undefined && dto.balanceAdjustment !== 0) {
+      if (dto.balanceAdjustment || before.plan !== wallet.planType
+        || before.expiry?.getTime() !== wallet.expiresAt?.getTime()
+        || before.unlimited !== wallet.isUnlimited) {
         await this.walletRepository.recordTransaction(
           {
             walletId: wallet.id,
-            amount: dto.balanceAdjustment,
+            amount: wallet.balance - prevBalance,
+            actorUserId: dto.actorUserId,
+            balanceBefore: prevBalance, balanceAfter: wallet.balance,
+            planTypeBefore: before.plan, planTypeAfter: wallet.planType,
+            expiresAtBefore: before.expiry, expiresAtAfter: wallet.expiresAt,
+            isUnlimitedBefore: before.unlimited, isUnlimitedAfter: wallet.isUnlimited,
             transactionType: "ADMIN_MANUAL_ADJUSTMENT",
-            note:
-              dto.note ??
-              `Ajuste manual de créditos: ${prevBalance} -> ${wallet.balance}`,
+            note,
           },
           trx,
         );

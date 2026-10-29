@@ -6,6 +6,9 @@ export interface TokenPayload {
   sub: string;
   role: UserRole;
   email: string;
+  sid: string;
+  token_version: number;
+  must_change_password: boolean;
 }
 
 export interface ITokenService {

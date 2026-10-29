@@ -26,7 +26,7 @@ httpClient.interceptors.response.use(
     const config = error.config as
       | (InternalAxiosRequestConfig & { retried?: boolean })
       | undefined;
-    const isAuthRequest = /\/auth\/(login|register|refresh|logout)/.test(
+    const isAuthRequest = /\/auth\/(login|refresh|change-password)/.test(
       config?.url ?? "",
     );
     if (

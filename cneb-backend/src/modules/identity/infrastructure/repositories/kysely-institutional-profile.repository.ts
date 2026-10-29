@@ -13,7 +13,6 @@ export class KyselyInstitutionalProfileRepository implements IInstitutionalProfi
       .selectFrom("institutional_profiles")
       .selectAll()
       .where("user_id", "=", userId)
-      .where("is_default", "=", true)
       .executeTakeFirst();
 
     if (!row) return null;

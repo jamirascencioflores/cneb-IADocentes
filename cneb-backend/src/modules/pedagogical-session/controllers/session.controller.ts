@@ -1,14 +1,13 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../infrastructure/database/database.js";
 import { KyselyCurriculumRepository } from "../../curriculum/infrastructure/repositories/kysely-curriculum.repository.js";
-import { KyselyWalletRepository } from "../../billing/infrastructure/repositories/kysely-wallet.repository.js";
 import { GeminiLLMService } from "../infrastructure/services/gemini-llm.service.js";
 import { NativeDocxGeneratorService } from "../infrastructure/services/native-docx-generator.service.js";
 import { PreviewSessionUseCase } from "../application/preview-session.use-case.js";
-import { SaveSessionUseCase } from "../application/save-session.use-case.js";
+import { GenerateSessionUseCase } from "../application/generate-session.use-case.js";
 import { ExportSessionDocxUseCase } from "../application/export-session-docx.use-case.js";
-import { previewSessionSchema, saveSessionSchema } from "./session.schemas.js";
-import { authenticate } from "../../../presentation/middlewares/auth-guard.js";
+import { generateSessionSchema } from "./session.schemas.js";
+import { authenticate, authorize } from "../../../presentation/middlewares/auth-guard.js";
 import { z } from "zod";
 
 const sessionParamSchema = z.object({
@@ -17,40 +16,26 @@ const sessionParamSchema = z.object({
 
 export async function sessionRoutes(server: FastifyInstance) {
   const curriculumRepo = new KyselyCurriculumRepository(db);
-  const walletRepo = new KyselyWalletRepository(db);
   const llmService = new GeminiLLMService();
   const docxGenerator = new NativeDocxGeneratorService();
 
   const previewUseCase = new PreviewSessionUseCase(llmService, curriculumRepo);
-  const saveUseCase = new SaveSessionUseCase(db);
+  const generateUseCase = new GenerateSessionUseCase(db, previewUseCase);
   const exportUseCase = new ExportSessionDocxUseCase(
-    walletRepo,
     docxGenerator,
     db,
   );
 
-  // POST /api/v1/sessions/preview
+  // A generation is persisted and charged exactly once, never saved by the browser.
   server.post(
-    "/sessions/preview",
-    { preHandler: [authenticate] },
+    "/sessions/generate",
+    { preHandler: [authenticate, authorize(["TEACHER"])] },
     async (request: FastifyRequest, reply: FastifyReply) => {
-      const dto = previewSessionSchema.parse(request.body);
-      const result = await previewUseCase.execute(dto);
+      const key = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/).parse(request.headers["idempotency-key"]);
+      const dto = generateSessionSchema.parse(request.body);
+      const result = await generateUseCase.execute(request.user!, key, dto);
+      reply.header("Cache-Control", "no-store");
       return reply.status(200).send(result);
-    },
-  );
-
-  // POST /api/v1/sessions
-  server.post(
-    "/sessions",
-    { preHandler: [authenticate] },
-    async (request: FastifyRequest, reply: FastifyReply) => {
-      const dto = saveSessionSchema.parse(request.body);
-      const result = await saveUseCase.execute({
-        userId: request.user!.sub,
-        ...dto,
-      });
-      return reply.status(201).send(result);
     },
   );
 

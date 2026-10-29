@@ -37,6 +37,7 @@ export async function billingRoutes(server: FastifyInstance) {
 
       const result = await adjustSubscriptionUseCase.execute({
         targetUserId: id,
+        actorUserId: request.user!.sub,
         planType: dto.planType,
         balanceAdjustment: dto.balanceAdjustment,
         isUnlimited: dto.isUnlimited,

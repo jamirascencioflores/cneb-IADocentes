@@ -21,6 +21,8 @@ export class KyselyUserRepository implements IUserRepository {
       passwordHash: row.password_hash,
       role: row.role,
       isActive: row.is_active,
+      mustChangePassword: row.must_change_password,
+      tokenVersion: row.token_version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
@@ -41,6 +43,8 @@ export class KyselyUserRepository implements IUserRepository {
       passwordHash: row.password_hash,
       role: row.role,
       isActive: row.is_active,
+      mustChangePassword: row.must_change_password,
+      tokenVersion: row.token_version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     });
@@ -55,6 +59,8 @@ export class KyselyUserRepository implements IUserRepository {
         password_hash: user.passwordHash,
         role: user.role,
         is_active: user.isActive,
+        must_change_password: user.mustChangePassword,
+        token_version: user.tokenVersion,
       })
       .execute();
   }
@@ -67,6 +73,8 @@ export class KyselyUserRepository implements IUserRepository {
         password_hash: user.passwordHash,
         role: user.role,
         is_active: user.isActive,
+        must_change_password: user.mustChangePassword,
+        token_version: user.tokenVersion,
         updated_at: new Date(),
       })
       .where("id", "=", user.id)

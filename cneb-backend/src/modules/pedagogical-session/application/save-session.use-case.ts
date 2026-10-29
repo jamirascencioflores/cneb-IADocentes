@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { ValidationError } from "../../../core/errors/app-error.js";
 import { hasValidMoments } from "../domain/generated-session.schema.js";
-import { Kysely } from "kysely";
+import { Kysely, Transaction } from "kysely";
 import {
   DatabaseSchema,
   GradeLevelEnum,
@@ -9,10 +9,12 @@ import {
   CrossCuttingThemeEnum,
   InstrumentTypeEnum,
   DidacticMomentTypeEnum,
+  InstitutionalSnapshot,
 } from "../../../infrastructure/database/types.js";
 
 export interface SaveSessionDTO {
   userId: string;
+  institutionalSnapshot?: InstitutionalSnapshot;
   areaId: string;
   gradeLevel: GradeLevelEnum;
   sections: string[];
@@ -53,13 +55,13 @@ export interface SaveSessionDTO {
 export class SaveSessionUseCase {
   constructor(private readonly db: Kysely<DatabaseSchema>) {}
 
-  public async execute(dto: SaveSessionDTO): Promise<{ id: string }> {
+  public async execute(dto: SaveSessionDTO, transaction?: Transaction<DatabaseSchema>): Promise<{ id: string }> {
     if (!hasValidMoments(dto.pedagogicalDuration, dto.moments)) {
       throw new ValidationError("Distribución temporal inválida.");
     }
     const sessionId = crypto.randomUUID();
 
-    await this.db.transaction().execute(async (trx) => {
+    const persist = async (trx: Transaction<DatabaseSchema>) => {
       for (const competency of dto.competencies) {
         const match = await trx
           .selectFrom("performances as p")
@@ -82,6 +84,7 @@ export class SaveSessionUseCase {
         .values({
           id: sessionId,
           user_id: dto.userId,
+          institutional_snapshot: dto.institutionalSnapshot ? JSON.stringify(dto.institutionalSnapshot) : null,
           area_id: dto.areaId,
           grade_level: dto.gradeLevel,
           sections: JSON.stringify(dto.sections),
@@ -156,7 +159,9 @@ export class SaveSessionUseCase {
           }
         }
       }
-    });
+    };
+    if (transaction) await persist(transaction);
+    else await this.db.transaction().execute(persist);
 
     return { id: sessionId };
   }

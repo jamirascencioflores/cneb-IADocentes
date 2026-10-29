@@ -59,3 +59,21 @@ function unauthorized(config: InternalAxiosRequestConfig) {
     config,
   });
 }
+
+it("renews an expired access token before logging out the current device", async () => {
+  const calls: string[] = [];
+  axios.defaults.adapter = async (config) => {
+    calls.push(config.url ?? "");
+    if (config.url === "/auth/refresh") return {
+      data: { accessToken: "logout-renewed" }, status: 200, statusText: "OK", headers: new AxiosHeaders(), config,
+    };
+    if (config.headers.get("Authorization") !== "Bearer logout-renewed") throw unauthorized(config);
+    return { data: null, status: 204, statusText: "No Content", headers: new AxiosHeaders(), config };
+  };
+  localStorage.setItem("cneb_access_token", "expired");
+  // The clients capture the adapter when created.
+  vi.resetModules();
+  const { httpClient } = await import("./http-client");
+  expect((await httpClient.post("/auth/logout")).status).toBe(204);
+  expect(calls).toEqual(["/auth/logout", "/auth/refresh", "/auth/logout"]);
+});

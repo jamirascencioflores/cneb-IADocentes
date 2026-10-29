@@ -50,6 +50,7 @@ describe("AdjustUserSubscriptionUseCase", () => {
 
     const result = await useCase.execute({
       targetUserId: "user-familia",
+      actorUserId: "admin-1",
       planType: "LIFETIME_FREE",
       isUnlimited: true,
       balanceAdjustment: 9999,
@@ -63,5 +64,34 @@ describe("AdjustUserSubscriptionUseCase", () => {
     expect(result.expiresAt).toBeNull();
     expect(walletRepository.update).toHaveBeenCalledTimes(1);
     expect(walletRepository.recordTransaction).toHaveBeenCalledTimes(1);
+    expect(walletRepository.recordTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      actorUserId: "admin-1", balanceBefore: 0, balanceAfter: 9999,
+      planTypeBefore: "TRIAL", planTypeAfter: "LIFETIME_FREE",
+      isUnlimitedBefore: false, isUnlimitedAfter: true, expiresAtAfter: null,
+    }), expect.anything());
+  });
+  it("records an audited zero-amount movement for plan-only changes", async () => {
+    const wallet = CreditWallet.reconstitute({
+      id: "wallet", userId: "teacher", balance: 3, isUnlimited: false, planType: "TRIAL",
+      startsAt: new Date(), expiresAt: null, createdAt: new Date(), updatedAt: new Date(),
+    });
+    vi.mocked(walletRepository.findByUserIdForUpdate).mockResolvedValue(wallet);
+    await useCase.execute({ targetUserId: "teacher", actorUserId: "admin", planType: "MONTHLY", note: "Cambio de plan" });
+    expect(walletRepository.recordTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 0, actorUserId: "admin", balanceBefore: 3, balanceAfter: 3,
+      planTypeBefore: "TRIAL", planTypeAfter: "MONTHLY",
+    }), expect.anything());
+  });
+  it("requires a reason and rejects an excessive withdrawal without updating the wallet", async () => {
+    const wallet = CreditWallet.reconstitute({
+      id: "wallet", userId: "teacher", balance: 3, isUnlimited: false, planType: "TRIAL",
+      startsAt: new Date(), expiresAt: null, createdAt: new Date(), updatedAt: new Date(),
+    });
+    vi.mocked(walletRepository.findByUserIdForUpdate).mockResolvedValue(wallet);
+    await expect(useCase.execute({ targetUserId: "teacher", actorUserId: "admin", balanceAdjustment: 1, note: " " })).rejects.toThrow(/motivo/);
+    await expect(useCase.execute({ targetUserId: "teacher", actorUserId: "admin", balanceAdjustment: -5, note: "Retiro" })).rejects.toThrow(/negativo/);
+    expect(wallet.balance).toBe(3);
+    expect(walletRepository.update).not.toHaveBeenCalled();
+    expect(walletRepository.recordTransaction).not.toHaveBeenCalled();
   });
 });

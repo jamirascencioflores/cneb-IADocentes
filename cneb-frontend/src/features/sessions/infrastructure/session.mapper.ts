@@ -19,6 +19,7 @@ export class SessionMapper {
     return {
       ...data,
       selectedCompetencyIds: selectedCompetencies.map((c) => c.competencyId),
+      selectedCompetencies,
       instrumentConfig: { instrumentType, appendTableToDocument },
     };
   }
@@ -46,6 +47,8 @@ export class SessionMapper {
     }
     return {
       ...form,
+      id: dto.id,
+      institutionalProfile: dto.institutionalProfile,
       areaName: form.areaId,
       learningPurpose: dto.learningPurpose,
       evidenceDescription: dto.evidenceDescription,

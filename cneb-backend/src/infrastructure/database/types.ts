@@ -11,6 +11,7 @@ export type SubscriptionPlanEnum =
 export type TransactionTypeEnum =
   | "SUBSCRIPTION_RECHARGE"
   | "SESSION_EXPORT_DEBIT"
+  | "SESSION_GENERATION_DEBIT"
   | "ADMIN_MANUAL_ADJUSTMENT"
   | "FAILED_REFUND";
 
@@ -20,6 +21,8 @@ export interface UsersTable {
   password_hash: string;
   role: UserRoleEnum;
   is_active: Generated<boolean>;
+  must_change_password: Generated<boolean>;
+  token_version: Generated<number>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -59,6 +62,16 @@ export interface WalletTransactionsTable {
   reference_session_id: string | null;
   note: string | null;
   created_at: Generated<Date>;
+  actor_user_id: string | null;
+  balance_before: number | null;
+  balance_after: number | null;
+  plan_type_before: SubscriptionPlanEnum | null;
+  plan_type_after: SubscriptionPlanEnum | null;
+  expires_at_before: Date | null;
+  expires_at_after: Date | null;
+  is_unlimited_before: boolean | null;
+  is_unlimited_after: boolean | null;
+  generation_request_id: string | null;
 }
 
 export type GradeLevelEnum = "FIRST" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH";
@@ -121,6 +134,41 @@ export interface LearningSessionsTable {
   evaluation_declaration: string;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  institutional_snapshot: Generated<unknown>;
+}
+
+export interface InstitutionalSnapshot {
+  teacherFullName: string;
+  specialty: string;
+  schoolName: string;
+  ugel: string;
+  dre: string;
+  principalName: string | null;
+  badgeUrl: string | null;
+  signatureUrl: string | null;
+}
+
+export interface AuthSessionsTable {
+  id: string;
+  user_id: string;
+  expires_at: Date;
+  revoked_at: Date | null;
+  created_at: Generated<Date>;
+}
+
+export interface GenerationRequestsTable {
+  id: string;
+  user_id: string;
+  idempotency_key: string;
+  payload_hash: string;
+  status: "PROCESSING" | "COMPLETED" | "FAILED";
+  attempt_id: string;
+  lease_expires_at: Date;
+  session_id: string | null;
+  response: unknown;
+  error_code: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
 }
 
 export interface SessionCompetenciesTable {
@@ -161,6 +209,8 @@ export interface EvaluationCriteriaTable {
 
 // Actualiza DatabaseSchema en src/infrastructure/database/types.ts:
 export interface DatabaseSchema {
+  auth_sessions: AuthSessionsTable;
+  generation_requests: GenerationRequestsTable;
   users: UsersTable;
   institutional_profiles: InstitutionalProfilesTable;
   credit_wallets: CreditWalletsTable;

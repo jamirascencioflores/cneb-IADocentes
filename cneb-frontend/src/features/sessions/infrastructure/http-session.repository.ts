@@ -2,28 +2,21 @@ import { httpClient } from "@/shared/lib/http-client";
 import { ISessionRepository } from "../domain/session.repository";
 import { SessionDraftFormData } from "../domain/session-form.schema";
 import { SessionPreviewEntity } from "../domain/session.types";
-import { SessionPreviewResponseDTO } from "./session.dto";
+import { GenerationResponseSchema } from "./session.dto";
 import { SessionMapper } from "./session.mapper";
 
 export class HttpSessionRepository implements ISessionRepository {
   public async generatePreview(
     formData: SessionDraftFormData,
+    idempotencyKey: string,
   ): Promise<SessionPreviewEntity> {
     const payload = SessionMapper.toPreviewRequestDTO(formData);
-    const { data } = await httpClient.post<SessionPreviewResponseDTO>(
-      "/sessions/preview",
+    const { data } = await httpClient.post(
+      "/sessions/generate",
       payload,
+      { headers: { "Idempotency-Key": idempotencyKey } },
     );
-    return SessionMapper.toDomainEntity(data, formData);
-  }
-
-  public async saveSession(preview: SessionPreviewEntity): Promise<string> {
-    const payload = SessionMapper.toSaveSessionDTO(preview);
-    const { data } = await httpClient.post<{ id: string }>(
-      "/sessions",
-      payload,
-    );
-    return data.id;
+    return SessionMapper.toDomainEntity(GenerationResponseSchema.parse(data), formData);
   }
 
   public async downloadDocx(sessionId: string): Promise<Blob> {

@@ -23,8 +23,8 @@ export const adjustSubscriptionSchema = z.object({
       if (val === null) return null;
       return new Date(val);
     }),
-  note: z.string().max(255).optional(),
-});
+  note: z.string().trim().min(1).max(255),
+}).strict();
 
 export const userIdParamSchema = z.object({
   id: z.string().uuid("El ID debe ser un UUID válido"),
