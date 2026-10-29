@@ -12,7 +12,7 @@
 # ==========================================
 # Archivos de Compilación / Build Output
 # ==========================================
-/dist
+**/dist
 /build
 /out
 /.next/
@@ -20,7 +20,7 @@
 /.svelte-kit/
 /.turbo
 /.cache
-/coverage
+**/coverage
 *.tsbuildinfo
 
 # ==========================================

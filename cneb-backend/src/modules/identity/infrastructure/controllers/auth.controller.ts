@@ -1,3 +1,4 @@
+import { UnauthorizedError } from "../../../../core/errors/app-error.js";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { db } from "../../../../infrastructure/database/database.js";
 import { env } from "../../../../config/env.js";
@@ -57,6 +58,51 @@ export async function authRoutes(server: FastifyInstance) {
       });
     },
   );
+
+  server.post("/refresh", async (request, reply) => {
+    try {
+      const refreshToken = request.cookies.refreshToken;
+      if (!refreshToken) throw new UnauthorizedError("Sesión expirada.");
+      const payload = tokenService.verifyRefreshToken(refreshToken);
+      const user = await userRepository.findById(payload.sub);
+      if (!user?.isActive) throw new UnauthorizedError("Sesión expirada.");
+      return {
+        accessToken: tokenService.generateAccessToken({
+          sub: user.id,
+          email: user.email,
+          role: user.role,
+        }),
+      };
+    } catch (error) {
+      if (
+        !(error instanceof UnauthorizedError) &&
+        !(
+          error instanceof Error &&
+          ["TokenExpiredError", "JsonWebTokenError", "NotBeforeError"].includes(
+            error.name,
+          )
+        )
+      )
+        throw error;
+      reply.clearCookie("refreshToken", {
+        path: "/api/v1/auth/refresh",
+        httpOnly: true,
+        secure: env.NODE_ENV === "production",
+        sameSite: "strict",
+      });
+      throw new UnauthorizedError("Sesión expirada. Inicia sesión nuevamente.");
+    }
+  });
+
+  server.post("/logout", async (_request, reply) => {
+    reply.clearCookie("refreshToken", {
+      path: "/api/v1/auth/refresh",
+      httpOnly: true,
+      secure: env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+    return reply.status(204).send();
+  });
 
   // GET /api/v1/auth/me (Ruta protegida para verificar identidad)
   server.get(

@@ -1,4 +1,5 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
+import { ZodError } from "zod";
 import { AppError } from "../../core/errors/app-error.js";
 import { env } from "../../config/env.js";
 
@@ -7,6 +8,21 @@ export function errorHandler(
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
+  if (error instanceof ZodError) {
+    return reply
+      .status(400)
+      .send({
+        type: "about:blank",
+        title: "Datos inválidos",
+        status: 400,
+        detail: "Revisa los campos enviados.",
+        instance: request.url,
+        invalidParams: error.issues.map((issue) => ({
+          name: issue.path.join("."),
+          reason: issue.message,
+        })),
+      });
+  }
   if (error instanceof AppError) {
     return reply.status(error.statusCode).send({
       type: error.type,

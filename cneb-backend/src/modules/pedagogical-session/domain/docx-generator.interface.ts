@@ -26,6 +26,13 @@ export interface DocxSessionData {
     duaNotes?: string | null;
   }>;
   evaluationCriteria?: string[];
+  instrumentType?:
+    | "CHECKLIST"
+    | "RUBRIC"
+    | "SELF_EVALUATION"
+    | "OBSERVATION_GUIDE"
+    | "NONE";
+  appendTableToDocument?: boolean;
 }
 
 export interface IDocxGeneratorService {

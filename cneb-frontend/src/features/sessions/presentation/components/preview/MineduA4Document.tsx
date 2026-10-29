@@ -18,6 +18,7 @@ interface PreviewProps {
   isLoading?: boolean;
   isDownloading?: boolean;
   onDownload: () => void;
+  canDownload?: boolean;
 }
 
 export function MineduA4Document({
@@ -28,6 +29,7 @@ export function MineduA4Document({
   isLoading = false,
   isDownloading,
   onDownload,
+  canDownload = true,
 }: PreviewProps) {
   const areaName = AREA_NAME_MAP[data.areaId] || data.areaName || data.areaId;
   const gradeLabel = GRADE_LABEL_MAP[data.gradeLevel] || data.gradeLevel;
@@ -36,6 +38,18 @@ export function MineduA4Document({
   const instrumentLabel =
     INSTRUMENT_LABEL_MAP[data.instrument.instrumentType] ||
     data.instrument.instrumentType;
+  const instrumentColumns = {
+    CHECKLIST: ["SÍ", "NO"],
+    RUBRIC: [
+      "Inicio (C)",
+      "En proceso (B)",
+      "Logro esperado (A)",
+      "Logro destacado (AD)",
+    ],
+    SELF_EVALUATION: ["Lo logré", "Necesito apoyo", "¿Cómo mejoraré?"],
+    OBSERVATION_GUIDE: ["Evidencia observada", "Retroalimentación"],
+    NONE: [],
+  }[data.instrument.instrumentType];
   const sectionsText =
     data.sections.length > 0 ? data.sections.join(", ") : "—";
 
@@ -54,7 +68,7 @@ export function MineduA4Document({
         </div>
         <Button
           onClick={onDownload}
-          disabled={isDownloading || isLoading}
+          disabled={!canDownload || isDownloading || isLoading}
           size="sm"
           className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow text-xs h-8"
         >
@@ -74,11 +88,10 @@ export function MineduA4Document({
               {/* Cabecera Oficial */}
               <div className="text-center space-y-1 border-b border-slate-300 pb-3">
                 <p className="text-[10px] font-bold tracking-wider text-slate-600 uppercase">
-                  {ugelText ||
-                    "Gobierno Regional de Lima • DRELM • UGEL 01 San Juan de Miraflores / Villa El Salvador"}
+                  {ugelText || "Completa la DRE y UGEL de tu institución"}
                 </p>
                 <h2 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight">
-                  {schoolName || 'I.E. N.° 6066 "VILLA EL SALVADOR"'}
+                  {schoolName || "Institución educativa pendiente"}
                 </h2>
                 <p className="text-[11px] font-semibold text-slate-700">
                   PLANIFICACIÓN DE SESIÓN DE APRENDIZAJE •{" "}
@@ -113,7 +126,7 @@ export function MineduA4Document({
                     Docente Titular:{" "}
                   </span>
                   <span className="text-slate-700">
-                    {teacherName || "Jamir Jafet Ascencio Flores"}
+                    {teacherName || "Nombre del docente pendiente"}
                   </span>
                 </div>
               </div>
@@ -252,95 +265,108 @@ export function MineduA4Document({
               <div className="pt-6 pb-2 flex justify-end">
                 <div className="w-52 text-center border-t border-slate-800 pt-1">
                   <p className="text-[10.5px] font-bold text-slate-900">
-                    {teacherName || "Jamir Jafet Ascencio Flores"}
+                    {teacherName || "Nombre del docente pendiente"}
                   </p>
                   <p className="text-[9.5px] text-slate-500">
                     Docente de Área •{" "}
                     {schoolName
                       ? schoolName.split('"')[1] || schoolName
-                      : "I.E. 6066"}
+                      : "Institución educativa"}
                   </p>
                 </div>
               </div>
             </div>
 
             {/* PÁGINA 2 (ANEXO): INSTRUMENTO DE EVALUACIÓN */}
-            {data.instrument.appendTableToDocument && (
-              <div className="w-full max-w-[780px] h-auto bg-white p-7 sm:p-9 shadow-lg border border-slate-300 text-slate-900 font-sans text-xs space-y-4 leading-normal rounded-sm">
-                <div className="border-b border-slate-300 pb-3 text-center space-y-1">
-                  <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wide">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    <span>ANEXO: INSTRUMENTO DE EVALUACIÓN FORMATIVA</span>
+            {data.instrument.appendTableToDocument &&
+              data.instrument.instrumentType !== "NONE" && (
+                <div className="w-full max-w-[780px] h-auto bg-white p-7 sm:p-9 shadow-lg border border-slate-300 text-slate-900 font-sans text-xs space-y-4 leading-normal rounded-sm">
+                  <div className="border-b border-slate-300 pb-3 text-center space-y-1">
+                    <div className="flex items-center justify-center gap-1.5 text-xs font-bold text-slate-800 uppercase tracking-wide">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <span>ANEXO: INSTRUMENTO DE EVALUACIÓN FORMATIVA</span>
+                    </div>
+                    <h3 className="text-sm font-extrabold text-slate-900">
+                      {instrumentLabel.toUpperCase()}
+                    </h3>
+                    <p className="text-[10px] text-slate-500">
+                      Evidencia evaluada:{" "}
+                      {data.evidenceDescription || data.sessionTitle}
+                    </p>
                   </div>
-                  <h3 className="text-sm font-extrabold text-slate-900">
-                    {instrumentLabel.toUpperCase()}
-                  </h3>
-                  <p className="text-[10px] text-slate-500">
-                    Evidencia evaluada:{" "}
-                    {data.evidenceDescription || data.sessionTitle}
-                  </p>
-                </div>
 
-                <div className="space-y-2">
-                  <table className="w-full border-collapse border border-slate-300 text-[10.5px]">
-                    <thead className="bg-slate-100 text-slate-700 font-bold">
-                      <tr>
-                        <th className="border border-slate-300 p-2 w-10 text-center">
-                          N.°
-                        </th>
-                        <th className="border border-slate-300 p-2 text-left">
-                          Criterios de Evaluación Observable
-                        </th>
-                        <th className="border border-slate-300 p-2 w-16 text-center">
-                          SÍ
-                        </th>
-                        <th className="border border-slate-300 p-2 w-16 text-center">
-                          NO
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.instrument.criteria.map((crit) => (
-                        <tr
-                          key={crit.criterionNumber}
-                          className="hover:bg-slate-50/50"
-                        >
-                          <td className="border border-slate-300 p-2 text-center font-bold text-slate-800">
-                            {crit.criterionNumber}
-                          </td>
-                          <td className="border border-slate-300 p-2 text-slate-800 leading-snug">
-                            {crit.description}
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center text-slate-400 font-normal">
-                            ☐
-                          </td>
-                          <td className="border border-slate-300 p-2 text-center text-slate-400 font-normal">
-                            ☐
-                          </td>
+                  <div className="space-y-2">
+                    <table className="w-full border-collapse border border-slate-300 text-[10.5px]">
+                      <thead className="bg-slate-100 text-slate-700 font-bold">
+                        <tr>
+                          <th className="border border-slate-300 p-2 w-10 text-center">
+                            N.°
+                          </th>
+                          <th className="border border-slate-300 p-2 text-left">
+                            Criterios de Evaluación Observable
+                          </th>
+                          {instrumentColumns.map((column) => (
+                            <th
+                              key={column}
+                              className="border border-slate-300 p-2 text-center"
+                            >
+                              {column}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {data.instrument.criteria.map((crit) => (
+                          <tr
+                            key={crit.criterionNumber}
+                            className="hover:bg-slate-50/50"
+                          >
+                            <td className="border border-slate-300 p-2 text-center font-bold text-slate-800">
+                              {crit.criterionNumber}
+                            </td>
+                            <td className="border border-slate-300 p-2 text-slate-800 leading-snug">
+                              {crit.description}
+                            </td>
+                            {instrumentColumns.map((column) => (
+                              <td
+                                key={column}
+                                className="border border-slate-300 p-2 text-center text-slate-400"
+                              >
+                                {data.instrument.instrumentType === "CHECKLIST"
+                                  ? "☐"
+                                  : ""}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
 
-                  <p className="text-[10px] text-slate-500 italic pt-1">
-                    * Tabla generada sin nombres de estudiantes ficticios para
-                    aplicación directa en aula.
-                  </p>
-                </div>
-
-                {/* Espacio para sello o firma en anexo */}
-                <div className="pt-16 pb-2 flex justify-end">
-                  <div className="w-52 text-center border-t border-slate-800 pt-1">
-                    <p className="text-[10px] font-bold text-slate-900">
-                      {teacherName || "Jamir Jafet Ascencio Flores"}
-                    </p>
-                    <p className="text-[9px] text-slate-500">
-                      Firma del Docente Evaluador
+                    {data.instrument.instrumentType === "RUBRIC" && (
+                      <p className="text-xs text-amber-800">
+                        Plantilla de rúbrica: completa los descriptores de cada
+                        nivel antes de aplicarla.
+                      </p>
+                    )}
+                    <p className="text-[10px] text-slate-500 italic pt-1">
+                      * Tabla generada sin nombres de estudiantes ficticios para
+                      aplicación directa en aula.
                     </p>
                   </div>
+
+                  {/* Espacio para sello o firma en anexo */}
+                  <div className="pt-16 pb-2 flex justify-end">
+                    <div className="w-52 text-center border-t border-slate-800 pt-1">
+                      <p className="text-[10px] font-bold text-slate-900">
+                        {teacherName || "Nombre del docente pendiente"}
+                      </p>
+                      <p className="text-[9px] text-slate-500">
+                        Firma del Docente Evaluador
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
           </>
         )}
       </div>

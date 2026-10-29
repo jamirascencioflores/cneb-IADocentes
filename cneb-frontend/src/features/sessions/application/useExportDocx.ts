@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { sessionRepository } from "../infrastructure/http-session.repository";
 import { ApiProblemException } from "@/shared/types/problem-details.types";
 
@@ -8,7 +8,10 @@ interface ExportDocxParams {
 }
 
 export const useExportDocx = () => {
+  const queryClient = useQueryClient();
   return useMutation<void, ApiProblemException, ExportDocxParams>({
+    onSettled: () =>
+      queryClient.invalidateQueries({ queryKey: ["wallets", "me"] }),
     mutationKey: ["sessions", "export-docx"],
     mutationFn: async ({ sessionId, sessionTitle }) => {
       const blob = await sessionRepository.downloadDocx(sessionId);

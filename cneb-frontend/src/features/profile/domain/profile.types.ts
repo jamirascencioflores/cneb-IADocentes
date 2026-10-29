@@ -10,6 +10,8 @@ export interface UserSessionEntity {
 
 export interface InstitutionalProfileEntity {
   schoolId: string;
+  teacherFullName?: string;
+  principalName?: string;
   schoolName: string;
   modularCode: string;
   ugel: string;

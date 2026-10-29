@@ -51,19 +51,25 @@ export class ExportSessionDocxUseCase {
       .where("is_default", "=", true)
       .executeTakeFirst();
 
+    if (!profileRow || profileRow.user_id !== dto.userId) {
+      throw new NotFoundError(
+        "Tu cuenta debe ser configurada por el administrador con tus datos institucionales antes de exportar.",
+      );
+    }
+
     const profile = InstitutionalProfile.reconstitute({
-      id: profileRow?.id ?? crypto.randomUUID(),
-      userId: dto.userId,
-      teacherFullName: profileRow?.teacher_full_name ?? "Docente CNEB",
-      specialty: profileRow?.specialty ?? "Educación Secundaria",
-      schoolName: profileRow?.school_name ?? "Institución Educativa",
-      ugel: profileRow?.ugel ?? "UGEL",
-      dre: profileRow?.dre ?? "DRELM",
-      principalName: profileRow?.principal_name ?? null,
-      badgeUrl: profileRow?.badge_url ?? null,
-      signatureUrl: profileRow?.signature_url ?? null,
-      isDefault: true,
-      createdAt: new Date(),
+      id: profileRow.id,
+      userId: profileRow.user_id,
+      teacherFullName: profileRow.teacher_full_name,
+      specialty: profileRow.specialty,
+      schoolName: profileRow.school_name,
+      ugel: profileRow.ugel,
+      dre: profileRow.dre,
+      principalName: profileRow.principal_name,
+      badgeUrl: profileRow.badge_url,
+      signatureUrl: profileRow.signature_url,
+      isDefault: profileRow.is_default,
+      createdAt: profileRow.created_at,
     });
 
     // 3. Consultar datos complementarios
@@ -108,7 +114,7 @@ export class ExportSessionDocxUseCase {
       unitTitle: session.unit_title,
       areaName: area?.name ?? session.area_id,
       gradeLevel: session.grade_level,
-      sections: session.sections,
+      sections: formatSections(session.sections),
       pedagogicalDuration: session.pedagogical_duration,
       learningPurpose: session.learning_purpose,
       evidenceDescription: session.evidence_description,
@@ -129,6 +135,12 @@ export class ExportSessionDocxUseCase {
         duaNotes: m.dua_notes,
       })),
       ...(criteria.length > 0 ? { evaluationCriteria: criteria } : {}),
+      ...(instrument
+        ? {
+            instrumentType: instrument.instrument_type,
+            appendTableToDocument: instrument.append_table_to_document,
+          }
+        : {}),
     };
 
     // 4. Compilación del Word en memoria
@@ -171,4 +183,15 @@ export class ExportSessionDocxUseCase {
       fileName: `Sesion_${safeTitle}.docx`,
     };
   }
+}
+
+function formatSections(value: string): string {
+  try {
+    const sections: unknown = JSON.parse(value);
+    if (Array.isArray(sections) && sections.every((s) => typeof s === "string"))
+      return sections.join(", ");
+  } catch {
+    /* Older records may already contain display text. */
+  }
+  return value;
 }

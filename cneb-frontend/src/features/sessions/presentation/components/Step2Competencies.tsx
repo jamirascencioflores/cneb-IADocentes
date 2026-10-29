@@ -3,7 +3,7 @@ import { SessionDraftFormData } from "../../domain/session-form.schema";
 import { CrossCuttingTheme } from "../../domain/session.types";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { Checkbox } from "@/shared/components/ui/checkbox";
-import { CNEB_CURRICULUM_DATA } from "@/features/curriculum/domain/cneb-curriculum.data";
+import { useCurriculum } from "@/features/curriculum/application/useCurriculum";
 
 interface Step2Props {
   form: UseFormReturn<SessionDraftFormData>;
@@ -24,6 +24,11 @@ const THEMES: { id: CrossCuttingTheme; label: string; values: string }[] = [
     id: "INTERCULTURAL",
     label: "Enfoque Intercultural",
     values: "Respeto a la identidad cultural, Diálogo intercultural",
+  },
+  {
+    id: "GENDER_EQUALITY",
+    label: "Enfoque de Igualdad de Género",
+    values: "Igualdad y dignidad, Justicia, Empatía",
   },
   {
     id: "ENVIRONMENTAL",
@@ -53,9 +58,23 @@ export function Step2Competencies({ form }: Step2Props) {
   const selectedCompetencies = watch("selectedCompetencies") || [];
   const currentTheme = watch("crossCuttingTheme");
 
-  const areaCurriculum =
-    CNEB_CURRICULUM_DATA[currentAreaId] || CNEB_CURRICULUM_DATA["COM"];
-  const availableCompetencies = areaCurriculum.competencies;
+  const curriculum = useCurriculum(currentAreaId, watch("gradeLevel"));
+  const areaCurriculum = { name: curriculum.data?.areaName ?? currentAreaId };
+  const availableCompetencies = (curriculum.data?.competencies ?? []).flatMap(
+    (comp) => {
+      const performance = comp.performances[0];
+      return performance
+        ? [
+            {
+              ...comp,
+              code: "",
+              defaultPerformance: performance.standardDescription,
+              defaultPerformanceId: performance.id,
+            },
+          ]
+        : [];
+    },
+  );
 
   const toggleCompetency = (
     compId: string,
@@ -107,7 +126,7 @@ export function Step2Competencies({ form }: Step2Props) {
           Paso 2: Competencias y Enfoques CNEB
         </h3>
         <span className="text-xs font-medium text-slate-500">
-          Currículo Nacional Oficial ({areaCurriculum.name})
+          Catálogo curricular ({areaCurriculum.name})
         </span>
       </div>
 
@@ -122,6 +141,22 @@ export function Step2Competencies({ form }: Step2Props) {
           </p>
         )}
 
+        {curriculum.isPending && (
+          <p role="status">Cargando competencias del grado…</p>
+        )}
+        {curriculum.isError && (
+          <p role="alert">
+            No se pudo cargar el catálogo.{" "}
+            <button type="button" onClick={() => void curriculum.refetch()}>
+              Reintentar
+            </button>
+          </p>
+        )}
+        {curriculum.isSuccess && availableCompetencies.length === 0 && (
+          <p role="status">
+            No hay desempeños registrados para esta área y grado.
+          </p>
+        )}
         <div className="space-y-3">
           {availableCompetencies.map((comp) => {
             const selectedItem = selectedCompetencies.find(

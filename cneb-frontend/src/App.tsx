@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { SessionPlannerPage } from "@/features/sessions/presentation/pages/SessionPlannerPage";
 import { LoginForm } from "@/features/auth/presentation/components/LoginForm";
@@ -17,6 +17,15 @@ export function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() =>
     authRepository.isAuthenticated(),
   );
+
+  useEffect(() => {
+    const onExpired = () => {
+      queryClient.clear();
+      setIsAuthenticated(false);
+    };
+    window.addEventListener("cneb:session-expired", onExpired);
+    return () => window.removeEventListener("cneb:session-expired", onExpired);
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -1,66 +1,89 @@
-import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
-import { ProblemDetails } from "../types/problem-details.types";
+import axios, { type AxiosError, type InternalAxiosRequestConfig } from "axios";
+import type { ProblemDetails } from "../types/problem-details.types";
 
-export const httpClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:3000/api/v1",
+const options = {
+  baseURL: import.meta.env.VITE_API_URL || "/api/v1",
   withCredentials: true,
-});
+};
+export const httpClient = axios.create(options);
+const refreshClient = axios.create(options);
+let refreshing: Promise<string> | null = null;
 
-// Interceptor de Solicitud
-httpClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+httpClient.interceptors.request.use((config) => {
   const token = localStorage.getItem("cneb_access_token");
-
-  if (token) {
-    if (typeof config.headers.set === "function") {
-      config.headers.set("Authorization", `Bearer ${token}`);
-    } else {
-      config.headers["Authorization"] = `Bearer ${token}`;
-    }
-  }
-
-  // Debug local en consola del navegador
-  console.log(`[HTTP Request] ${config.method?.toUpperCase()} ${config.url}`, {
-    hasToken: !!token,
-    authHeader:
-      config.headers["Authorization"] || config.headers.get?.("Authorization"),
-  });
-
+  if (token) config.headers.set("Authorization", `Bearer ${token}`);
   return config;
 });
 
-// Interceptor de Respuesta
+function expireSession() {
+  localStorage.removeItem("cneb_access_token");
+  window.dispatchEvent(new Event("cneb:session-expired"));
+}
+
 httpClient.interceptors.response.use(
   (response) => response,
-  (error: AxiosError<ProblemDetails>) => {
-    const requestUrl = error.config?.url || "";
-
-    // Solo borra token si expresamente falla el login o refresh
+  async (error: AxiosError<ProblemDetails>) => {
+    const config = error.config as
+      | (InternalAxiosRequestConfig & { retried?: boolean })
+      | undefined;
+    const isAuthRequest = /\/auth\/(login|register|refresh|logout)/.test(
+      config?.url ?? "",
+    );
     if (
       error.response?.status === 401 &&
-      requestUrl.includes("/auth/refresh")
+      config &&
+      !config.retried &&
+      !isAuthRequest
     ) {
-      localStorage.removeItem("cneb_access_token");
+      config.retried = true;
+      try {
+        refreshing ??= refreshClient
+          .post<{ accessToken: string }>("/auth/refresh")
+          .then(({ data }) => {
+            if (!data.accessToken)
+              throw new Error("No se recibió un token de acceso.");
+            localStorage.setItem("cneb_access_token", data.accessToken);
+            return data.accessToken;
+          })
+          .finally(() => {
+            refreshing = null;
+          });
+        const token = await refreshing;
+        config.headers.set("Authorization", `Bearer ${token}`);
+        return httpClient(config);
+      } catch (refreshError) {
+        if (
+          axios.isAxiosError(refreshError) &&
+          refreshError.response?.status === 401
+        )
+          expireSession();
+        // Network/provider errors do not silently destroy a valid refresh session.
+      }
+    } else if (error.response?.status === 401 && config?.retried) {
+      expireSession();
     }
-
-    if (error.response?.data) {
-      const problem = error.response.data;
-      return Promise.reject({
-        problem,
-        status: error.response.status,
-        message: problem.detail || problem.title || error.message,
-      });
+    let body: unknown = error.response?.data;
+    if (body instanceof Blob) {
+      try {
+        body = JSON.parse(await body.text());
+      } catch {
+        body = undefined;
+      }
     }
-
+    const status = error.response?.status ?? 503;
+    const problem: ProblemDetails =
+      body && typeof body === "object" && "detail" in body
+        ? (body as ProblemDetails)
+        : {
+            type: "about:blank",
+            title: "No se pudo completar la solicitud",
+            status,
+            detail: error.message,
+          };
     return Promise.reject({
-      problem: {
-        type: "about:blank",
-        title: "Error de Conexión",
-        status: error.response?.status || 500,
-        detail:
-          error.message || "No se pudo comunicar con el servidor backend.",
-      },
-      status: error.response?.status || 500,
-      message: error.message,
+      problem,
+      status,
+      message: problem.detail || problem.title,
     });
   },
 );

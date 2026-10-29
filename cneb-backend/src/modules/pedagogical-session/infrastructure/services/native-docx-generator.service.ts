@@ -319,78 +319,55 @@ export class NativeDocxGeneratorService implements IDocxGeneratorService {
             ),
 
             // Bloque 5: Anexo de Criterios de Evaluación
-            ...(sessionData.evaluationCriteria &&
+            ...(sessionData.appendTableToDocument !== false &&
+            sessionData.instrumentType !== "NONE" &&
+            sessionData.evaluationCriteria &&
             sessionData.evaluationCriteria.length > 0
               ? [
                   new Paragraph({
-                    text: "V. INSTRUMENTO DE EVALUACIÓN (LISTA DE COTEJO)",
+                    text: `V. INSTRUMENTO DE EVALUACIÓN (${instrumentLabel(sessionData.instrumentType)})`,
                     heading: HeadingLevel.HEADING_2,
                     spacing: { before: 200, after: 100 },
                   }),
+                  ...(sessionData.instrumentType === "RUBRIC"
+                    ? [
+                        new Paragraph({
+                          text: "Plantilla de rúbrica: completa los descriptores de cada nivel antes de aplicarla.",
+                        }),
+                      ]
+                    : []),
                   new Table({
                     width: { size: 100, type: WidthType.PERCENTAGE },
                     rows: [
                       new TableRow({
                         children: [
-                          new TableCell({
-                            width: { size: 10, type: WidthType.PERCENTAGE },
-                            borders: cellBorders,
-                            children: [this.createBoldParagraph("N°")],
-                          }),
-                          new TableCell({
-                            width: { size: 70, type: WidthType.PERCENTAGE },
-                            borders: cellBorders,
-                            children: [
-                              this.createBoldParagraph(
-                                "Criterios de Evaluación",
-                              ),
-                            ],
-                          }),
-                          new TableCell({
-                            width: { size: 10, type: WidthType.PERCENTAGE },
-                            borders: cellBorders,
-                            children: [
-                              this.createBoldParagraph(
-                                "SÍ",
-                                AlignmentType.CENTER,
-                              ),
-                            ],
-                          }),
-                          new TableCell({
-                            width: { size: 10, type: WidthType.PERCENTAGE },
-                            borders: cellBorders,
-                            children: [
-                              this.createBoldParagraph(
-                                "NO",
-                                AlignmentType.CENTER,
-                              ),
-                            ],
-                          }),
-                        ],
+                          "N°",
+                          "Criterio de evaluación",
+                          ...instrumentColumns(sessionData.instrumentType),
+                        ].map(
+                          (text) =>
+                            new TableCell({
+                              borders: cellBorders,
+                              children: [this.createBoldParagraph(text)],
+                            }),
+                        ),
                       }),
                       ...sessionData.evaluationCriteria.map(
-                        (crit, idx) =>
+                        (criterion, index) =>
                           new TableRow({
                             children: [
-                              new TableCell({
-                                borders: cellBorders,
-                                children: [
-                                  new Paragraph({ text: String(idx + 1) }),
-                                ],
-                              }),
-                              new TableCell({
-                                borders: cellBorders,
-                                children: [new Paragraph({ text: crit })],
-                              }),
-                              new TableCell({
-                                borders: cellBorders,
-                                children: [new Paragraph({ text: "" })],
-                              }),
-                              new TableCell({
-                                borders: cellBorders,
-                                children: [new Paragraph({ text: "" })],
-                              }),
-                            ],
+                              String(index + 1),
+                              criterion,
+                              ...instrumentColumns(
+                                sessionData.instrumentType,
+                              ).map(() => ""),
+                            ].map(
+                              (text) =>
+                                new TableCell({
+                                  borders: cellBorders,
+                                  children: [new Paragraph({ text })],
+                                }),
+                            ),
                           }),
                       ),
                     ],
@@ -418,5 +395,34 @@ export class NativeDocxGeneratorService implements IDocxGeneratorService {
     });
 
     return Packer.toBuffer(doc);
+  }
+}
+
+function instrumentLabel(type: DocxSessionData["instrumentType"]): string {
+  const labels = {
+    CHECKLIST: "LISTA DE COTEJO",
+    RUBRIC: "RÚBRICA",
+    SELF_EVALUATION: "AUTOEVALUACIÓN",
+    OBSERVATION_GUIDE: "GUÍA DE OBSERVACIÓN",
+    NONE: "SIN INSTRUMENTO",
+  };
+  return labels[type ?? "CHECKLIST"];
+}
+
+function instrumentColumns(type: DocxSessionData["instrumentType"]): string[] {
+  switch (type) {
+    case "RUBRIC":
+      return [
+        "Inicio (C)",
+        "En proceso (B)",
+        "Logro esperado (A)",
+        "Logro destacado (AD)",
+      ];
+    case "SELF_EVALUATION":
+      return ["Lo logré", "Necesito apoyo", "¿Cómo mejoraré?"];
+    case "OBSERVATION_GUIDE":
+      return ["Evidencia observada", "Retroalimentación"];
+    default:
+      return ["SÍ", "NO"];
   }
 }

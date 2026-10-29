@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useSessionDraftForm } from "../../application/useSessionDraftForm";
 import { useSessionPreview } from "../../application/useSessionPreview";
 import { useExportDocx } from "../../application/useExportDocx";
@@ -11,7 +11,12 @@ import { MineduA4Document } from "../components/preview/MineduA4Document";
 import { Button } from "@/shared/components/ui/button";
 import { RefreshCw, RotateCcw } from "lucide-react";
 import { DUA_CATEGORY_DETAILS } from "@/features/curriculum/domain/cneb-labels";
-import { CNEB_CURRICULUM_DATA } from "@/features/curriculum/domain/cneb-curriculum.data";
+import { useCurriculum } from "@/features/curriculum/application/useCurriculum";
+import { reconcileCompetencies } from "@/features/curriculum/application/reconcile-competencies";
+import {
+  persistSnapshot,
+  type SavedSnapshot,
+} from "../../application/session-snapshot";
 import { ProblemDetailsDialog } from "@/shared/components/feedback/ProblemDetailsDialog";
 import { ProblemDetails } from "@/shared/types/problem-details.types";
 import { TeacherNavbar } from "@/features/profile/presentation/components/TeacherNavbar";
@@ -81,7 +86,13 @@ const initialAiContent = {
 };
 
 export function SessionPlannerPage() {
-  const { user, institution } = useTeacherContext();
+  const {
+    institution,
+    profileMissing,
+    profileMessage,
+    isLoading: contextLoading,
+    error: contextError,
+  } = useTeacherContext();
   const form = useSessionDraftForm();
   const previewMutation = useSessionPreview();
   const exportMutation = useExportDocx();
@@ -96,33 +107,31 @@ export function SessionPlannerPage() {
   const formValues = form.watch();
   const currentAreaId = formValues.areaId;
 
-  // Reset reactivo de competencias al cambiar de Área en Paso 1
-  useEffect(() => {
-    const areaCurriculum = CNEB_CURRICULUM_DATA[currentAreaId];
-    if (areaCurriculum && areaCurriculum.competencies.length > 0) {
-      const currentSelected = form.getValues("selectedCompetencies") || [];
-      const belongsToArea = currentSelected.some((c) =>
-        areaCurriculum.competencies.some((ac) => ac.id === c.competencyId),
-      );
+  const curriculum = useCurriculum(currentAreaId, formValues.gradeLevel);
+  const savedSnapshot = useRef<SavedSnapshot | null>(null);
+  const exporting = useRef(false);
+  const generationSequence = useRef(0);
+  const [generatedFor, setGeneratedFor] = useState<string | null>(null);
+  const formFingerprint = JSON.stringify(formValues);
+  const generationIsCurrent = generatedFor === formFingerprint;
 
-      if (!belongsToArea) {
-        const firstComp = areaCurriculum.competencies[0];
-        form.setValue("selectedCompetencies", [
-          {
-            competencyId: firstComp.id,
-            performanceId: firstComp.defaultPerformanceId,
-            precisedPerformance: firstComp.defaultPerformance,
-            isPrimary: true,
-          },
-        ]);
-      }
+  useEffect(() => {
+    if (!curriculum.data) return;
+    const selected = form.getValues("selectedCompetencies");
+    const reconciled = reconcileCompetencies(selected, curriculum.data);
+    if (JSON.stringify(selected) !== JSON.stringify(reconciled)) {
+      form.setValue("selectedCompetencies", reconciled, {
+        shouldValidate: true,
+      });
     }
-  }, [currentAreaId, form]);
+  }, [curriculum.data, form]);
 
   // Fusión reactiva en vivo para la vista A4
   const livePreviewData: SessionPreviewEntity = useMemo(() => {
-    const areaCurriculum =
-      CNEB_CURRICULUM_DATA[formValues.areaId] || CNEB_CURRICULUM_DATA["COM"];
+    const areaCurriculum = {
+      name: curriculum.data?.areaName ?? formValues.areaId,
+      competencies: curriculum.data?.competencies ?? [],
+    };
     const areaTitle = areaCurriculum.name;
 
     const competencies = (formValues.selectedCompetencies || []).map((c) => {
@@ -148,7 +157,7 @@ export function SessionPlannerPage() {
           ? 135
           : 90;
     const startMin = totalMinutes === 45 ? 10 : 15;
-    const closeMin = 10;
+    const closeMin = totalMinutes === 45 ? 5 : 10;
     const devMin = totalMinutes - startMin - closeMin;
 
     const activeDuaCategories = formValues.hasDuaInclusion
@@ -233,7 +242,9 @@ export function SessionPlannerPage() {
       hasDuaInclusion: formValues.hasDuaInclusion,
       duaCategories: formValues.duaCategories,
       materialsAndResources: formValues.materialsAndResources,
-      evaluationDeclaration: `La evaluación será formativa para acompañar el desarrollo de las competencias del área de ${areaTitle}.`,
+      evaluationDeclaration:
+        aiGeneratedData?.evaluationDeclaration ??
+        "Genera la sesión para obtener su evaluación.",
       competencies:
         competencies.length > 0
           ? competencies
@@ -254,64 +265,65 @@ export function SessionPlannerPage() {
       didacticMoments: aiGeneratedData?.didacticMoments || defaultMoments,
       instrument: {
         instrumentType: formValues.instrumentType,
-        evaluatedEvidence: "Evidencia de desempeño de la sesión",
+        evaluatedEvidence: aiGeneratedData?.evidenceDescription ?? "",
         appendTableToDocument: formValues.appendTableToDocument,
         criteria:
           aiGeneratedData?.instrument?.criteria || initialAiContent.criteria,
       },
     };
-  }, [formValues, aiGeneratedData]);
+  }, [formValues, aiGeneratedData, curriculum.data]);
 
-  const handleRefreshPreview = form.handleSubmit(async (data) => {
-    try {
-      const generated = await previewMutation.mutateAsync(data);
-      setAiGeneratedData(generated);
-    } catch (err: unknown) {
-      if (err && typeof err === "object" && "problem" in err) {
-        setActiveProblem((err as { problem: ProblemDetails }).problem);
+  const handleRefreshPreview = () =>
+    form.handleSubmit(async (data) => {
+      try {
+        const sequence = ++generationSequence.current;
+        const snapshot = JSON.stringify(data);
+        const generated = await previewMutation.mutateAsync(data);
+        if (
+          sequence !== generationSequence.current ||
+          snapshot !== JSON.stringify(form.getValues())
+        )
+          return;
+        setAiGeneratedData(generated);
+        setGeneratedFor(snapshot);
+      } catch (err: unknown) {
+        if (err && typeof err === "object" && "problem" in err) {
+          setActiveProblem((err as { problem: ProblemDetails }).problem);
+        } else {
+          setActiveProblem({
+            type: "about:blank",
+            title: "No se pudo generar la sesión",
+            status: 502,
+            detail: err instanceof Error ? err.message : "Intenta nuevamente.",
+          });
+        }
       }
-    }
-  });
+    })();
 
   const [isSaving, setIsSaving] = useState(false);
 
-  // 1. Declarar como type guard (id is string)
-  const isValidUuid = (id?: string): id is string => {
-    return Boolean(
-      id &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        id,
-      ),
-    );
-  };
-
   const handleExport = async () => {
+    if (
+      exporting.current ||
+      !generationIsCurrent ||
+      !curriculum.data ||
+      contextError ||
+      contextLoading ||
+      profileMissing
+    )
+      return;
+    exporting.current = true;
+    setIsSaving(true);
     try {
-      let targetSessionId = livePreviewData.id;
-
-      // Si no es un UUID válido, se persiste primero
-      if (!isValidUuid(targetSessionId)) {
-        setIsSaving(true);
-        const persistedId =
-          await sessionRepository.saveSession(livePreviewData);
-        targetSessionId = persistedId;
-
-        setAiGeneratedData((prev) => ({
-          ...(prev || {}),
-          id: persistedId,
-        }));
-      }
-
-      // Verificación de nulidad para satisfacer el compilador
-      if (!targetSessionId) {
-        throw new Error(
-          "No se pudo determinar el identificador de la sesión para exportar.",
-        );
-      }
-
-      // 2. Aquí TypeScript ya sabe que targetSessionId es un string garantizado
+      if (!(await form.trigger())) return;
+      const snapshot = await persistSnapshot(
+        livePreviewData,
+        savedSnapshot.current,
+        (preview) => sessionRepository.saveSession(preview),
+      );
+      savedSnapshot.current = snapshot;
       await exportMutation.mutateAsync({
-        sessionId: targetSessionId,
+        sessionId: snapshot.id,
         sessionTitle: livePreviewData.sessionTitle,
       });
     } catch (err: unknown) {
@@ -328,6 +340,7 @@ export function SessionPlannerPage() {
         });
       }
     } finally {
+      exporting.current = false;
       setIsSaving(false);
     }
   };
@@ -335,6 +348,25 @@ export function SessionPlannerPage() {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <TeacherNavbar />
+      <div className="px-4 pt-4">
+        {profileMessage && (
+          <p role="alert" className="text-amber-800">
+            {profileMessage}
+          </p>
+        )}
+        {contextError && (
+          <p role="alert" className="text-red-700">
+            No se pudieron cargar los datos de tu cuenta. Recarga la página para
+            reintentar.
+          </p>
+        )}
+        {!generationIsCurrent && (
+          <p role="status" className="text-sm text-amber-800">
+            Borrador: genera o actualiza la sesión con IA antes de descargar.
+            Los cambios requieren una nueva generación.
+          </p>
+        )}
+      </div>
 
       {/* Main Split-Screen Container */}
       <main className="flex-1 p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 max-w-[1700px] mx-auto w-full">
@@ -362,7 +394,10 @@ export function SessionPlannerPage() {
                 size="sm"
                 onClick={() => {
                   form.reset();
+                  generationSequence.current += 1;
                   setAiGeneratedData(null);
+                  setGeneratedFor(null);
+                  savedSnapshot.current = null;
                 }}
                 className="gap-1.5 text-xs text-slate-600"
               >
@@ -374,7 +409,12 @@ export function SessionPlannerPage() {
                 type="button"
                 size="sm"
                 onClick={handleRefreshPreview}
-                disabled={previewMutation.isPending}
+                disabled={
+                  previewMutation.isPending ||
+                  curriculum.isPending ||
+                  curriculum.isError ||
+                  !formValues.selectedCompetencies.length
+                }
                 className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 font-semibold shadow"
               >
                 <RefreshCw
@@ -392,11 +432,18 @@ export function SessionPlannerPage() {
         <div className="lg:col-span-5 lg:sticky lg:top-16 h-[calc(100vh-5rem)]">
           <MineduA4Document
             data={livePreviewData}
-            teacherName={user.fullName}
+            teacherName={institution.teacherFullName}
             schoolName={institution.schoolName}
             ugelText={`${institution.drelm} • ${institution.ugel}`}
             isLoading={previewMutation.isPending}
             isDownloading={exportMutation.isPending || isSaving}
+            canDownload={
+              generationIsCurrent &&
+              !profileMissing &&
+              !contextError &&
+              !contextLoading &&
+              curriculum.isSuccess
+            }
             onDownload={handleExport}
           />
         </div>
