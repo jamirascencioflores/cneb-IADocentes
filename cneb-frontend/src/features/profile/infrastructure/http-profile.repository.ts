@@ -6,7 +6,8 @@ import type {
   WalletEntity,
 } from "../domain/profile.types";
 
-export interface InstitutionalProfileInput {
+interface InstitutionalProfileResponse {
+  id: string;
   teacher_full_name: string;
   specialty: string;
   school_name: string;
@@ -30,9 +31,9 @@ export class HttpProfileRepository {
 
   async getInstitutionalProfile(): Promise<InstitutionalProfileEntity | null> {
     try {
-      const { data } = await httpClient.get<
-        InstitutionalProfileInput & { id: string }
-      >("/profile/institutional");
+      const { data } = await httpClient.get<InstitutionalProfileResponse>(
+        "/profile/institutional",
+      );
       return {
         schoolId: data.id,
         teacherFullName: data.teacher_full_name,
@@ -56,12 +57,6 @@ export class HttpProfileRepository {
         return null;
       throw error;
     }
-  }
-
-  async saveInstitutionalProfile(
-    input: InstitutionalProfileInput,
-  ): Promise<void> {
-    await httpClient.put("/profile/institutional", input);
   }
 
   async getWallet(): Promise<WalletEntity> {

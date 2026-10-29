@@ -17,7 +17,6 @@ import {
   persistSnapshot,
   type SavedSnapshot,
 } from "../../application/session-snapshot";
-import { InstitutionalProfileForm } from "@/features/profile/presentation/components/InstitutionalProfileForm";
 import { ProblemDetailsDialog } from "@/shared/components/feedback/ProblemDetailsDialog";
 import { ProblemDetails } from "@/shared/types/problem-details.types";
 import { TeacherNavbar } from "@/features/profile/presentation/components/TeacherNavbar";
@@ -88,9 +87,9 @@ const initialAiContent = {
 
 export function SessionPlannerPage() {
   const {
-    user,
     institution,
     profileMissing,
+    profileMessage,
     isLoading: contextLoading,
     error: contextError,
   } = useTeacherContext();
@@ -350,7 +349,11 @@ export function SessionPlannerPage() {
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <TeacherNavbar />
       <div className="px-4 pt-4">
-        <InstitutionalProfileForm />
+        {profileMessage && (
+          <p role="alert" className="text-amber-800">
+            {profileMessage}
+          </p>
+        )}
         {contextError && (
           <p role="alert" className="text-red-700">
             No se pudieron cargar los datos de tu cuenta. Recarga la página para
@@ -429,7 +432,7 @@ export function SessionPlannerPage() {
         <div className="lg:col-span-5 lg:sticky lg:top-16 h-[calc(100vh-5rem)]">
           <MineduA4Document
             data={livePreviewData}
-            teacherName={institution.teacherFullName || user.fullName}
+            teacherName={institution.teacherFullName}
             schoolName={institution.schoolName}
             ugelText={`${institution.drelm} • ${institution.ugel}`}
             isLoading={previewMutation.isPending}

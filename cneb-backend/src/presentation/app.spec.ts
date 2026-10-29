@@ -18,6 +18,8 @@ import { buildServer } from "./app.js";
 import { JwtTokenService } from "../modules/identity/infrastructure/security/token.service.js";
 import { KyselyUserRepository } from "../modules/identity/infrastructure/repositories/kysely-user.repository.js";
 import { User } from "../modules/identity/domain/user.entity.js";
+import { InstitutionalProfile } from "../modules/identity/domain/institutional-profile.entity.js";
+import { KyselyInstitutionalProfileRepository } from "../modules/identity/infrastructure/repositories/kysely-institutional-profile.repository.js";
 import { db } from "../infrastructure/database/database.js";
 const tokens = new JwtTokenService();
 const payload = {
@@ -48,6 +50,68 @@ describe("registered HTTP routes", () => {
   it("registers and protects institutional routes", async () => {
     const result = await app.inject({ url: "/api/v1/profile/institutional" });
     expect(result.statusCode).toBe(401);
+  });
+  it("reads the institutional profile of the authenticated teacher", async () => {
+    const profile = InstitutionalProfile.create({
+      userId: payload.sub,
+      teacherFullName: "Ana Docente",
+      specialty: "Comunicación",
+      schoolName: "Escuela de prueba",
+      ugel: "UGEL 01",
+      dre: "DRE de prueba",
+      principalName: "Rosa Directora",
+    });
+    const find = vi
+      .spyOn(KyselyInstitutionalProfileRepository.prototype, "findByUserId")
+      .mockResolvedValue(profile);
+    try {
+      const result = await app.inject({
+        url: "/api/v1/profile/institutional",
+        headers: { authorization: `Bearer ${tokens.generateAccessToken(payload)}` },
+      });
+      expect(result.statusCode).toBe(200);
+      expect(find).toHaveBeenCalledWith(payload.sub);
+      expect(result.json()).toMatchObject({
+        user_id: payload.sub,
+        teacher_full_name: "Ana Docente",
+        specialty: "Comunicación",
+        school_name: "Escuela de prueba",
+        ugel: "UGEL 01",
+        dre: "DRE de prueba",
+        principal_name: "Rosa Directora",
+      });
+      find.mockResolvedValue(null);
+      const missing = await app.inject({
+        url: "/api/v1/profile/institutional",
+        headers: { authorization: `Bearer ${tokens.generateAccessToken(payload)}` },
+      });
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().detail).toContain("configurada por el administrador");
+    } finally {
+      find.mockRestore();
+    }
+  });
+  it("does not expose an institutional update route to teachers", async () => {
+    const upsert = vi.spyOn(KyselyInstitutionalProfileRepository.prototype, "upsert");
+    try {
+      const result = await app.inject({
+        method: "PUT",
+        url: "/api/v1/profile/institutional",
+        headers: { authorization: `Bearer ${tokens.generateAccessToken(payload)}` },
+        payload: {
+          teacher_full_name: "Nombre reemplazado",
+          specialty: "Matemática",
+          school_name: "Otra escuela",
+          ugel: "Otra UGEL",
+          dre: "Otra DRE",
+          principal_name: "Otro director",
+        },
+      });
+      expect(result.statusCode).toBe(404);
+      expect(upsert).not.toHaveBeenCalled();
+    } finally {
+      upsert.mockRestore();
+    }
   });
   it("returns 400 for invalid Zod input before touching the database", async () => {
     const result = await app.inject({

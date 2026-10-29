@@ -14,6 +14,7 @@ describe("ExportSessionDocxUseCase", () => {
   let walletRepository: IWalletRepository;
   let docxGenerator: IDocxGeneratorService;
   let mockDb: any;
+  let profileQuery: any;
   let useCase: ExportSessionDocxUseCase;
 
   beforeEach(() => {
@@ -54,10 +55,33 @@ describe("ExportSessionDocxUseCase", () => {
         }),
         execute: vi.fn().mockResolvedValue([]),
       }),
-      transaction: () => ({
+      transaction: vi.fn().mockReturnValue({
         execute: async (cb: any) => cb({}),
       }),
     };
+
+    const sessionQuery = mockDb.selectFrom();
+    profileQuery = {
+      selectAll: vi.fn().mockReturnThis(),
+      where: vi.fn().mockReturnThis(),
+      executeTakeFirst: vi.fn().mockResolvedValue({
+        id: "profile-1",
+        user_id: "user-docente",
+        teacher_full_name: "Ana Docente",
+        specialty: "Comunicación",
+        school_name: "Escuela de prueba",
+        ugel: "UGEL 01",
+        dre: "DRE de prueba",
+        principal_name: "Rosa Directora",
+        badge_url: null,
+        signature_url: null,
+        is_default: true,
+        created_at: new Date("2026-01-01"),
+      }),
+    };
+    mockDb.selectFrom.mockImplementation((table: string) =>
+      table === "institutional_profiles" ? profileQuery : sessionQuery,
+    );
 
     useCase = new ExportSessionDocxUseCase(
       walletRepository,
@@ -92,6 +116,40 @@ describe("ExportSessionDocxUseCase", () => {
     expect(mockWallet.balance).toBe(2);
     expect(walletRepository.update).toHaveBeenCalledTimes(1);
     expect(walletRepository.recordTransaction).toHaveBeenCalledTimes(1);
+    expect(profileQuery.where).toHaveBeenCalledWith("user_id", "=", "user-docente");
+    expect(profileQuery.where).toHaveBeenCalledWith("is_default", "=", true);
+    expect(docxGenerator.compile).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: "profile-1",
+        userId: "user-docente",
+        teacherFullName: "Ana Docente",
+        specialty: "Comunicación",
+        schoolName: "Escuela de prueba",
+        ugel: "UGEL 01",
+        dre: "DRE de prueba",
+        principalName: "Rosa Directora",
+      }),
+    );
+  });
+
+  it.each([
+    ["no existe", undefined],
+    ["pertenece a otro usuario", { user_id: "otro-docente" }],
+  ])("rechaza la exportación sin generar ni debitar si el perfil %s", async (_, profile) => {
+    profileQuery.executeTakeFirst.mockResolvedValue(profile);
+
+    await expect(
+      useCase.execute({ sessionId: "session-123", userId: "user-docente" }),
+    ).rejects.toMatchObject({
+      statusCode: 404,
+      message: expect.stringContaining("configurada por el administrador"),
+    });
+    expect(docxGenerator.compile).not.toHaveBeenCalled();
+    expect(mockDb.transaction).not.toHaveBeenCalled();
+    expect(walletRepository.findByUserIdForUpdate).not.toHaveBeenCalled();
+    expect(walletRepository.update).not.toHaveBeenCalled();
+    expect(walletRepository.recordTransaction).not.toHaveBeenCalled();
   });
 
   it("debe abortar con PaymentRequiredError si el docente no tiene saldo", async () => {

@@ -50,13 +50,17 @@ export function useTeacherContext() {
     enabled,
     retry: false,
   });
+  const profileMissing =
+    institutionQuery.isSuccess && institutionQuery.data === null;
   return {
     user: userQuery.data ?? emptyUser,
     institution: institutionQuery.data ?? emptyInstitution,
     wallet: walletQuery.data ?? emptyWallet,
     walletAvailable: walletQuery.isSuccess,
-    profileMissing:
-      institutionQuery.isSuccess && institutionQuery.data === null,
+    profileMissing,
+    profileMessage: profileMissing
+      ? "Tu cuenta debe ser configurada por el administrador. Contacta al administrador para registrar tus datos institucionales."
+      : null,
     isLoading:
       userQuery.isPending ||
       institutionQuery.isPending ||

@@ -34,4 +34,28 @@ describe("profile API contracts", () => {
       status: 500,
     });
   });
+  it("reads institutional data registered by the administrator", async () => {
+    vi.mocked(httpClient.get).mockResolvedValue({
+      data: {
+        id: "profile-1",
+        teacher_full_name: "Ana Docente",
+        specialty: "Comunicación",
+        school_name: "Escuela de prueba",
+        ugel: "UGEL 01",
+        dre: "DRE de prueba",
+        principal_name: "Rosa Directora",
+      },
+    });
+
+    expect(await repository.getInstitutionalProfile()).toMatchObject({
+      schoolId: "profile-1",
+      teacherFullName: "Ana Docente",
+      specialty: "Comunicación",
+      schoolName: "Escuela de prueba",
+      ugel: "UGEL 01",
+      drelm: "DRE de prueba",
+      principalName: "Rosa Directora",
+    });
+    expect(httpClient.get).toHaveBeenCalledWith("/profile/institutional");
+  });
 });

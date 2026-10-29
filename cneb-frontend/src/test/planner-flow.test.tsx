@@ -12,10 +12,11 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.clearAllMocks();
   vi.unstubAllGlobals();
 });
 
-it("loads account data, generates, exports and persists edits with the selected grade", async () => {
+it.each([false, true])("loads account data and enforces institutional access (profile missing: %s)", async (profileMissing) => {
   vi.stubGlobal(
     "ResizeObserver",
     class {
@@ -44,7 +45,8 @@ it("loads account data, generates, exports and persists edits with the selected 
       };
     if (url === "/wallets/me")
       return { data: { balance: 5, isUnlimited: false, planType: "TRIAL" } };
-    if (url === "/profile/institutional")
+    if (url === "/profile/institutional") {
+      if (profileMissing) throw { status: 404 };
       return {
         data: {
           id: "profile",
@@ -55,6 +57,7 @@ it("loads account data, generates, exports and persists edits with the selected 
           dre: "DRE de prueba",
         },
       };
+    }
     if (url === "/curriculum/areas")
       return { data: [{ id: "COM", name: "Comunicación", cycle: "VI-VII" }] };
     if (url?.includes("/curriculum/"))
@@ -96,7 +99,15 @@ it("loads account data, generates, exports and persists edits with the selected 
   });
   const user = userEvent.setup();
   const { container } = render(<App />);
-  await screen.findAllByText("Ana Docente");
+  if (profileMissing) {
+    await screen.findByText(/Tu cuenta debe ser configurada por el administrador/);
+  } else {
+    await screen.findAllByText("Ana Docente");
+    expect(screen.getAllByText(/Escuela de prueba/).length).toBeGreaterThan(1);
+    expect(screen.getByText("DRE de prueba • UGEL 01")).toBeInTheDocument();
+  }
+  expect(screen.queryByRole("button", { name: /Editar perfil institucional|Guardar perfil/ })).not.toBeInTheDocument();
+  expect(container.querySelector('[name="teacher_full_name"], [name="specialty"], [name="school_name"], [name="ugel"], [name="dre"], [name="principal_name"]')).toBeNull();
   const download = screen.getByRole("button", {
     name: "Descargar Word (.docx)",
   });
@@ -107,6 +118,17 @@ it("loads account data, generates, exports and persists edits with the selected 
   await waitFor(() => expect(generate).toBeEnabled());
   await user.click(generate);
   await screen.findByText(generatedSession.moments[0].activitiesDescription);
+  if (profileMissing) {
+    expect(download).toBeDisabled();
+    await user.click(download);
+    expect(saves).toBe(0);
+    expect(httpClient.get).not.toHaveBeenCalledWith(
+      expect.stringContaining("/export-docx"),
+      expect.anything(),
+    );
+    expect(httpClient.put).not.toHaveBeenCalled();
+    return;
+  }
   await waitFor(() => expect(download).toBeEnabled());
   await user.click(download);
   await waitFor(() =>
@@ -159,4 +181,5 @@ it("loads account data, generates, exports and persists edits with the selected 
       }),
     ),
   );
+  expect(httpClient.put).not.toHaveBeenCalled();
 });
