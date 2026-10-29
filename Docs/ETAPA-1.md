@@ -1,6 +1,6 @@
 # Etapa 1: seguridad y créditos de generación
 
-Implementación en la rama actual, sin commit. No se ejecutaron migraciones, scripts administrativos, revisión de cuentas ni pruebas sobre una base PostgreSQL real.
+Implementación confirmada en la rama `feat/superadmin-panel`, commit `069f77e` (`feat: secure session generation and credit accounting`). La validación PostgreSQL real de la Etapa 1 se completó en una base local, exclusiva y descartable para pruebas. No se ejecutaron scripts de SUPERADMIN ni de revisión, desactivación o eliminación del docente demo.
 
 ## Alcance
 
@@ -10,7 +10,7 @@ Implementación en la rama actual, sin commit. No se ejecutaron migraciones, scr
 - No se modifican los prompts de Gemini, el catálogo curricular ni la composición del DOCX.
 - Las etapas 2, 3 y 4 siguen pendientes: API/panel administrativo, navegación por roles, pantalla de cambio de contraseña y carga completa de secundaria. Primaria queda fuera del MVP 1.0.
 
-## Migraciones preparadas
+## Migraciones validadas en PostgreSQL local
 
 Se conserva [001_initial_schema.sql](../cneb-backend/src/infrastructure/database/migrations/001_initial_schema.sql).
 
@@ -93,11 +93,36 @@ Para la etapa 3: aplicar el mismo control a contraseña nueva/confirmación y op
 
 ## Validación y límites
 
-Resultado de la revisión anterior: 67 pruebas backend y 43 frontend aprobadas (110 en total). TypeScript backend/frontend y lint de los 11 archivos TypeScript afectados sin errores. La suite backend excluyó explícitamente *.postgres.spec.ts: no se ejecutó ninguna prueba PostgreSQL. Las pruebas de preflight y opciones del SUPERADMIN utilizan dobles y funciones importadas sin ejecutar los scripts. Se verifican recuperación de la clave al recrear el hook, aislamiento por usuario/huella, vencimiento y reconciliación, fallos definitivos/inciertos y resultado cobrado visible/descargable pese a cambios del formulario durante la espera.
+Resultado de la revisión anterior: 67 pruebas backend y 43 frontend aprobadas (110 en total). TypeScript backend/frontend y lint de los 11 archivos TypeScript afectados sin errores. Aquella ejecución backend excluyó explícitamente *.postgres.spec.ts; la validación PostgreSQL real se completó posteriormente y se documenta a continuación. Las pruebas de preflight y opciones del SUPERADMIN utilizan dobles y funciones importadas sin ejecutar los scripts. Se verifican recuperación de la clave al recrear el hook, aislamiento por usuario/huella, vencimiento y reconciliación, fallos definitivos/inciertos y resultado cobrado visible/descargable pese a cambios del formulario durante la espera.
 
-La suite [generate-session.postgres.spec.ts](../cneb-backend/src/modules/pedagogical-session/application/generate-session.postgres.spec.ts) está preparada pero no ejecutada. Comprueba concurrencia con el último crédito, idempotencia, rollback SQL, identidad inmutable, ilimitadas e invalidación al desactivar/reactivar. En esta revisión se excluyó expresamente por instrucción del usuario; no se comprobó Docker ni se conectó a PostgreSQL. Los tests unitarios de orquestación no prueban el bloqueo real de PostgreSQL.
+### Validación PostgreSQL real completada
 
-La etapa 1 queda cerrada a nivel de código con la corrección final descrita abajo. La validación PostgreSQL real continúa pendiente y debe completarse antes de ejecutar migraciones en una base importante o dar por verificados los bloqueos reales. La pantalla de cambio obligatorio y el acceso visual del SUPERADMIN pertenecen a etapa 3; los endpoints de etapa 1 pueden probarse con cliente HTTP.
+La validación fue ejecutada manualmente por el usuario, quien confirmó los siguientes resultados. Se utilizó exclusivamente PostgreSQL local en `127.0.0.1:5432/cneb_stage1_test_20261029`, con el usuario limitado `cneb_stage1_runner`. La base fue creada para estas pruebas: es exclusiva y descartable. No se utilizaron bases remotas, producción ni bases de desarrollo con datos importantes.
+
+La suite [generate-session.postgres.spec.ts](../cneb-backend/src/modules/pedagogical-session/application/generate-session.postgres.spec.ts) terminó con **1 archivo aprobado y 6 de 6 pruebas aprobadas**:
+
+| Comprobación sobre PostgreSQL real | Resultado |
+|---|---|
+| Concurrencia con el último crédito | Aprobada: una sola sesión persistida y un solo débito |
+| Idempotencia y replay de respuesta | Aprobados: recuperación del resultado sin duplicar la generación ni el débito |
+| Rollback atómico | Aprobado: el fallo de persistencia revierte sesión, consumo de crédito y movimiento |
+| Snapshot institucional inmutable | Aprobado |
+| Cuenta ilimitada sin débito | Aprobada: generación auditada sin movimiento de débito |
+| Invalidación de token_version | Aprobada: desactivar incrementa la versión y reactivar no la restaura |
+
+La suite creó su esquema temporal aleatorio, aplicó dentro de él las migraciones 001 a 007 y lo eliminó al finalizar. La consulta posterior de limpieza confirmó **0 esquemas temporales restantes** con el patrón `cneb_stage1_[0-9a-f]{32}`. La concurrencia y la atomicidad se comprobaron sobre PostgreSQL real, además de las pruebas unitarias previas.
+
+En la misma base descartable se validó después el ejecutor [migrate.ts](../cneb-backend/src/infrastructure/database/scripts/migrate.ts):
+
+- La ejecución de solo diagnóstico no realizó escrituras.
+- La primera ejecución con `--apply` aplicó las siete migraciones, de 001 a 007.
+- `schema_migrations` registró las siete migraciones con sus checksums y fechas; los siete checksums coincidieron con los archivos SQL.
+- La segunda ejecución con `--apply` no reaplicó ninguna migración y mantuvo el historial y las fechas de `schema_migrations` sin cambios.
+- El destino se mantuvo exclusivamente en `127.0.0.1:5432/cneb_stage1_test_20261029`. El ejecutor recibió esa conexión mediante una variable `DATABASE_URL` temporal; no se utilizó la conexión de otra base ni se cargó el archivo de entorno del proyecto.
+
+La limpieza del esquema temporal corresponde a la suite; las tablas aplicadas posteriormente por el ejecutor y su historial permanecen en la base descartable. Se conservaron la base y el usuario de pruebas. No se expusieron credenciales ni se modificaron código, pruebas, migraciones, archivos .env o datos externos. No se ejecutaron scripts de SUPERADMIN ni del docente demo, no se iniciaron las etapas 2 o 3 y no se hizo commit ni push. Git permaneció limpio durante la validación; este cierre documental modifica únicamente este documento y no repite pruebas ni migraciones.
+
+La Etapa 1 queda cerrada a nivel de código y de validación PostgreSQL local dentro de los casos descritos. La pantalla de cambio obligatorio y el acceso visual del SUPERADMIN pertenecen a etapa 3; los endpoints de etapa 1 pueden probarse con cliente HTTP.
 
 ### Cierre definitivo: clasificación de errores de generación
 
@@ -116,7 +141,7 @@ Validación final ejecutada desde `cneb-frontend` (todos los comandos finalizaro
 | `pnpm exec vitest run src/features/sessions/application/useSessionPreview.test.tsx` | 1 archivo aprobado; 28 pruebas aprobadas; duración 2,70 s |
 | `pnpm exec vitest run` | 11 archivos aprobados; 56 pruebas aprobadas; duración 7,25 s |
 
-En este cierre solo se modificaron [pending-generation.ts](../cneb-frontend/src/features/sessions/application/pending-generation.ts), [useSessionPreview.test.tsx](../cneb-frontend/src/features/sessions/application/useSessionPreview.test.tsx) y este documento. No se repitieron validaciones backend. No se ejecutaron migraciones, conexiones/pruebas PostgreSQL reales ni scripts administrativos; no se crearon usuarios o credenciales, no se modificaron secretos ni archivos .env y no se hizo commit ni push. No se iniciaron las etapas 2 o 3 ni se modificaron Gemini o el catálogo MINEDU.
+En ese cierre de frontend solo se modificaron [pending-generation.ts](../cneb-frontend/src/features/sessions/application/pending-generation.ts), [useSessionPreview.test.tsx](../cneb-frontend/src/features/sessions/application/useSessionPreview.test.tsx) y este documento. No se repitieron validaciones backend en ese momento; posteriormente se completó la validación PostgreSQL local descrita arriba. No se ejecutaron scripts administrativos de SUPERADMIN ni del docente demo, no se modificaron secretos ni archivos .env y no se hizo commit ni push. No se iniciaron las etapas 2 o 3 ni se modificaron Gemini o el catálogo MINEDU.
 
 ## Comandos locales sin base de datos
 
@@ -131,9 +156,9 @@ pnpm --dir cneb-frontend test
 
 Las pruebas PostgreSQL permanecen omitidas por defecto.
 
-## Operaciones preparadas, NO ejecutadas: requieren revisión del destino y autorización
+## Operaciones y comandos de referencia: requieren revisión del destino y autorización
 
-Primero revisar los archivos SQL anteriores y obtener host/puerto/base sin imprimir contraseña. No reutilizar db:setup en una base inicializada. El destino real no fue inspeccionado ni autorizado durante esta implementación.
+La suite PostgreSQL y el ejecutor de migraciones ya se validaron exclusivamente en la base local descartable indicada arriba. Los scripts de SUPERADMIN y del docente demo siguen sin ejecutarse. Los comandos siguientes se conservan como referencia; cualquier nueva ejecución requiere revisar el destino y su autorización. Primero revisar los archivos SQL anteriores y obtener host/puerto/base sin imprimir contraseña. No reutilizar db:setup en una base inicializada.
 
 Comprobaciones previas: esquema inicial completo, perfiles duplicados, docentes sin perfil, compatibilidad de billeteras, historial/checksums de migraciones y respaldo de la base. El ejecutor no modifica registros docentes ni billeteras para regularizarlos.
 
