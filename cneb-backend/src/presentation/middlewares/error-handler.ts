@@ -1,13 +1,15 @@
 import { FastifyError, FastifyReply, FastifyRequest } from "fastify";
 import { ZodError } from "zod";
 import { AppError } from "../../core/errors/app-error.js";
-import { env } from "../../config/env.js";
 
 export function errorHandler(
   error: FastifyError | AppError | Error,
   request: FastifyRequest,
   reply: FastifyReply,
 ) {
+  // Route templates exclude client query values and URL parameters.
+  const instance = request.routeOptions.url ?? "/";
+  const administrative = instance.startsWith("/api/v1/admin/");
   if (error instanceof ZodError) {
     return reply
       .status(400)
@@ -16,10 +18,10 @@ export function errorHandler(
         title: "Datos inválidos",
         status: 400,
         detail: "Revisa los campos enviados.",
-        instance: request.url,
+        instance,
         invalidParams: error.issues.map((issue) => ({
           name: issue.path.join("."),
-          reason: issue.message,
+          reason: "Valor inválido.",
         })),
       });
   }
@@ -28,9 +30,9 @@ export function errorHandler(
       type: error.type,
       title: error.constructor.name,
       status: error.statusCode,
-      detail: error.message,
-      instance: request.url,
-      ...(error.details ? { invalidParams: error.details } : {}),
+      detail: administrative ? "La operación administrativa no pudo completarse." : error.message,
+      instance,
+      ...(!administrative && error.details ? { invalidParams: error.details } : {}),
     });
   }
 
@@ -40,21 +42,23 @@ export function errorHandler(
       title: "Bad Request",
       status: 400,
       detail: "Error de validación en los parámetros de entrada",
-      instance: request.url,
-      invalidParams: error.validation,
+      instance,
     });
   }
 
-  request.log.error(error);
+  if ("statusCode" in error && [400, 413, 415, 429].includes(Number(error.statusCode))) {
+    return reply.status(Number(error.statusCode)).send({ type: "about:blank", title: "Solicitud rechazada",
+      status: Number(error.statusCode), detail: "Revisa la solicitud y sus límites.", instance });
+  }
+  // PostgreSQL errors may carry a failing row, hashes, SQL parameters or connection URLs.
+  // Never send an Error object, stack, message, request body or headers to the logger.
+  request.log.error({ event: "request_failed", requestId: request.id }, "Error interno inesperado");
 
   return reply.status(500).send({
     type: "https://api.cneb-planner.pe/errors/internal-server-error",
     title: "Internal Server Error",
     status: 500,
-    detail:
-      env.NODE_ENV === "production"
-        ? "Ha ocurrido un error interno inesperado."
-        : error.message,
-    instance: request.url,
+    detail: "Ha ocurrido un error interno inesperado.",
+    instance,
   });
 }

@@ -50,17 +50,19 @@ describe.skipIf(!enabled)("PostgreSQL stage 1 isolation and transactions (explic
   });
   async function fixture(balance = 1, unlimited = false) {
     const userId = randomUUID(), sid = randomUUID(), walletId = randomUUID();
-    await db.insertInto("users").values({ id: userId, email: userId + "@test.invalid",
-      password_hash: "test-hash-not-a-credential", role: "TEACHER", is_active: true }).execute();
-    await db.insertInto("auth_sessions").values({ id: sid, user_id: userId,
-      revoked_at: null, expires_at: new Date(Date.now() + 86400000) }).execute();
-    await db.insertInto("institutional_profiles").values({ user_id: userId,
-      teacher_full_name: institutionalFixture.teacherFullName, specialty: institutionalFixture.specialty,
-      school_name: institutionalFixture.schoolName, ugel: institutionalFixture.ugel, dre: institutionalFixture.dre,
-      principal_name: null, badge_url: null, signature_url: null }).execute();
-    await db.insertInto("credit_wallets").values({ id: walletId, user_id: userId, balance,
-      is_unlimited: unlimited, plan_type: unlimited ? "LIFETIME_FREE" : "MONTHLY",
-      expires_at: unlimited ? null : new Date(Date.now() + 86400000) }).execute();
+    await db.transaction().execute(async (trx) => {
+      await trx.insertInto("users").values({ id: userId, email: userId + "@test.invalid",
+        password_hash: "test-hash-not-a-credential", role: "TEACHER", is_active: true }).execute();
+      await trx.insertInto("auth_sessions").values({ id: sid, user_id: userId,
+        revoked_at: null, expires_at: new Date(Date.now() + 86400000) }).execute();
+      await trx.insertInto("institutional_profiles").values({ user_id: userId,
+        teacher_full_name: institutionalFixture.teacherFullName, specialty: institutionalFixture.specialty,
+        school_name: institutionalFixture.schoolName, ugel: institutionalFixture.ugel, dre: institutionalFixture.dre,
+        principal_name: null, badge_url: null, signature_url: null }).execute();
+      await trx.insertInto("credit_wallets").values({ id: walletId, user_id: userId, balance,
+        is_unlimited: unlimited, plan_type: unlimited ? "LIFETIME_FREE" : "MONTHLY",
+        expires_at: unlimited ? null : new Date(Date.now() + 86400000) }).execute();
+    });
     const auth = { ...authFixture, sub: userId, sid };
     const preview = { execute: vi.fn().mockResolvedValue(generationFixture) };
     const useCase = new GenerateSessionUseCase(db, preview as unknown as PreviewSessionUseCase);

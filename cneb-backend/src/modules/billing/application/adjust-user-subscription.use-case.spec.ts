@@ -73,7 +73,7 @@ describe("AdjustUserSubscriptionUseCase", () => {
   it("records an audited zero-amount movement for plan-only changes", async () => {
     const wallet = CreditWallet.reconstitute({
       id: "wallet", userId: "teacher", balance: 3, isUnlimited: false, planType: "TRIAL",
-      startsAt: new Date(), expiresAt: null, createdAt: new Date(), updatedAt: new Date(),
+      startsAt: new Date(), expiresAt: new Date(Date.now() + 86400000), createdAt: new Date(), updatedAt: new Date(),
     });
     vi.mocked(walletRepository.findByUserIdForUpdate).mockResolvedValue(wallet);
     await useCase.execute({ targetUserId: "teacher", actorUserId: "admin", planType: "MONTHLY", note: "Cambio de plan" });
@@ -85,7 +85,7 @@ describe("AdjustUserSubscriptionUseCase", () => {
   it("requires a reason and rejects an excessive withdrawal without updating the wallet", async () => {
     const wallet = CreditWallet.reconstitute({
       id: "wallet", userId: "teacher", balance: 3, isUnlimited: false, planType: "TRIAL",
-      startsAt: new Date(), expiresAt: null, createdAt: new Date(), updatedAt: new Date(),
+      startsAt: new Date(), expiresAt: new Date(Date.now() + 86400000), createdAt: new Date(), updatedAt: new Date(),
     });
     vi.mocked(walletRepository.findByUserIdForUpdate).mockResolvedValue(wallet);
     await expect(useCase.execute({ targetUserId: "teacher", actorUserId: "admin", balanceAdjustment: 1, note: " " })).rejects.toThrow(/motivo/);

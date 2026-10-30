@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { CreditWallet } from "./credit-wallet.entity.js";
+import { CreditWallet, walletConfigurationErrors } from "./credit-wallet.entity.js";
 function wallet(balance = 3) {
   return CreditWallet.reconstitute({ id: "w", userId: "u", balance, isUnlimited: false, planType: "MONTHLY",
     startsAt: new Date(), expiresAt: new Date(Date.now() + 86400000), createdAt: new Date(), updatedAt: new Date() });
@@ -23,4 +23,11 @@ it("requires a coherent unlimited plan and leaves its stored balance intact", ()
   account.debitForSessionGeneration();
   expect(account.balance).toBe(0);
   expect(account.canGenerateSession()).toBe(true);
+});
+it("requires explicit expiry for administrable temporary plans and preserves historical BIMONTHLY reads", () => {
+  for (const planType of ["TRIAL", "MONTHLY", "QUARTERLY", "ANNUAL"] as const) {
+    expect(walletConfigurationErrors({ balance: 0, planType, isUnlimited: false, expiresAt: null })).not.toHaveLength(0);
+    expect(walletConfigurationErrors({ balance: 0, planType, isUnlimited: false, expiresAt: new Date(0) })).toHaveLength(0);
+  }
+  expect(walletConfigurationErrors({ balance: 0, planType: "BIMONTHLY", isUnlimited: false, expiresAt: null })).toHaveLength(0);
 });

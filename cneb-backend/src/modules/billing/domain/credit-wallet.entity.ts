@@ -4,7 +4,7 @@ export type SubscriptionPlan =
   | "TRIAL"
   | "MONTHLY"
   | "BIMONTHLY"
-  | "TRIMONTHLY"
+  | "QUARTERLY"
   | "ANNUAL"
   | "LIFETIME_FREE";
 export type TransactionType =
@@ -38,6 +38,9 @@ export function walletConfigurationErrors(
     errors.push("LIFETIME_FREE exige is_unlimited=true.");
   if (wallet.planType === "LIFETIME_FREE" && wallet.expiresAt !== null)
     errors.push("LIFETIME_FREE exige expires_at nulo.");
+  // TRIMONTHLY is recognized only when preflight reads an unmigrated database.
+  if (["TRIAL", "MONTHLY", "QUARTERLY", "TRIMONTHLY", "ANNUAL"].includes(wallet.planType) && wallet.expiresAt === null)
+    errors.push("Los planes temporales exigen expires_at.");
   if (wallet.expiresAt !== null
     && (!(wallet.expiresAt instanceof Date) || !Number.isFinite(wallet.expiresAt.getTime())))
     errors.push("expires_at debe ser una fecha finita válida o nulo.");

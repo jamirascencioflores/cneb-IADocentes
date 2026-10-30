@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Kysely } from "kysely";
 import type { DatabaseSchema, SubscriptionPlanEnum } from "../types.js";
-const metadata = vi.hoisted(() => ({ queries: [] as string[] }));
+const metadata = vi.hoisted(() => ({ queries: [] as string[], incompatibleUsers: [] as { id: string }[], incompatibleEmails: [] as { id: string }[] }));
 vi.mock("kysely", async (original) => {
   const actual = await original<typeof import("kysely")>();
   return { ...actual, sql: (strings: TemplateStringsArray) => ({
@@ -12,7 +12,8 @@ vi.mock("kysely", async (original) => {
         "users", "institutional_profiles", "credit_wallets", "wallet_transactions",
         "areas", "competencies", "capacities", "performances", "learning_sessions",
         "session_competencies", "session_moments", "evaluation_instruments", "evaluation_criteria",
-      ].map((name) => ({ name })) : [] };
+      ].map((name) => ({ name })) : query.includes("SELECT u.id FROM users u WHERE") ? metadata.incompatibleUsers
+        : query.includes("SELECT id FROM users") ? metadata.incompatibleEmails : [] };
     },
   }) };
 });
@@ -24,7 +25,8 @@ const valid = {
 };
 describe("read-only wallet preflight (no database connection)", () => {
   afterEach(() => vi.restoreAllMocks());
-  beforeEach(() => { metadata.queries.length = 0; vi.spyOn(console, "log").mockImplementation(() => undefined); });
+  beforeEach(() => { metadata.queries.length = 0; metadata.incompatibleUsers = []; metadata.incompatibleEmails = [];
+    vi.spyOn(console, "log").mockImplementation(() => undefined); });
   it("reports every incompatible wallet and owner before any migration write", async () => {
     const rows = [
       { ...valid, id: "wallet-1", user_id: "teacher-1", is_unlimited: true },
@@ -57,5 +59,14 @@ describe("read-only wallet preflight (no database connection)", () => {
       existing: true, hasHistory: false,
     });
     expect(rows).toEqual(before);
+  });
+  it.each(["composition", "emails"])("stops on incompatible %s and only reports identifiers", async (failure) => {
+    if (failure === "composition") metadata.incompatibleUsers = [{ id: "teacher-missing-profile" }, { id: "admin-with-wallet" }];
+    else metadata.incompatibleEmails = [{ id: "duplicate-a" }, { id: "duplicate-b" }];
+    const db = { selectFrom: vi.fn(() => ({ select: vi.fn().mockReturnThis(), execute: async () => [] })) };
+    const error = await preflight(db as unknown as Kysely<DatabaseSchema>).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(Error);
+    for (const row of [...metadata.incompatibleUsers, ...metadata.incompatibleEmails]) expect((error as Error).message).toContain(row.id);
+    expect(metadata.queries.every((query) => query.trim().startsWith("SELECT"))).toBe(true);
   });
 });

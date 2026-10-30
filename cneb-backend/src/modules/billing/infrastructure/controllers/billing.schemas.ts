@@ -5,8 +5,7 @@ export const adjustSubscriptionSchema = z.object({
     .enum([
       "TRIAL",
       "MONTHLY",
-      "BIMONTHLY",
-      "TRIMONTHLY",
+      "QUARTERLY",
       "ANNUAL",
       "LIFETIME_FREE",
     ])

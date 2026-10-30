@@ -1,10 +1,10 @@
 import fs from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { createHash } from "node:crypto";
 import { sql, type Kysely } from "kysely";
 import type { DatabaseSchema } from "../types.js";
 import { databaseTarget, reportScriptError, scriptDatabase } from "./script-database.js";
 import { walletConfigurationErrors } from "../../../modules/billing/domain/credit-wallet.entity.js";
+import { applyMigrations } from "./migration-runner.js";
 
 const directory = new URL("../migrations/", import.meta.url);
 const initialTables = [
@@ -37,8 +37,24 @@ export async function preflight(db: Kysely<DatabaseSchema>) {
   if (present.has("institutional_profiles")) {
     const duplicates = await sql<{ user_id: string }>`SELECT user_id FROM institutional_profiles GROUP BY user_id HAVING count(*) > 1 ORDER BY user_id`.execute(db);
     if (duplicates.rows.length) throw new Error("Perfiles duplicados. No se modificaron registros. user_id: " + duplicates.rows.map((r) => r.user_id).join(", "));
-    const missing = await sql<{ id: string }>`SELECT u.id FROM users u LEFT JOIN institutional_profiles p ON p.user_id = u.id WHERE u.role = 'TEACHER' AND p.id IS NULL`.execute(db);
-    console.log("Docentes sin perfil (generación/exportación bloqueadas):", missing.rows.map((r) => r.id));
+    const incompatible = await sql<{ id: string }>`SELECT u.id FROM users u WHERE
+      (u.role = 'TEACHER' AND (
+        (SELECT count(*) FROM institutional_profiles p WHERE p.user_id = u.id) <> 1 OR
+        (SELECT count(*) FROM credit_wallets w WHERE w.user_id = u.id) <> 1
+      )) OR (u.role = 'SUPERADMIN' AND (
+        EXISTS (SELECT 1 FROM institutional_profiles p WHERE p.user_id = u.id) OR
+        EXISTS (SELECT 1 FROM credit_wallets w WHERE w.user_id = u.id)
+      )) ORDER BY u.id`.execute(db);
+    if (incompatible.rows.length) throw new Error("Composición docente incompatible. No se corrigieron registros. user_id: "
+      + incompatible.rows.map((row) => row.id).join(", "));
+  }
+  if (present.has("users")) {
+    const emails = await sql<{ id: string }>`SELECT id FROM users
+      WHERE email <> lower(btrim(email)) OR email !~ '^[!-~]+$'
+        OR lower(btrim(email)) IN (SELECT lower(btrim(email)) FROM users GROUP BY lower(btrim(email)) HAVING count(*) > 1)
+      ORDER BY id`.execute(db);
+    if (emails.rows.length) throw new Error("Correos incompatibles o duplicados. No se corrigieron registros. user_id: "
+      + emails.rows.map((row) => row.id).join(", "));
   }
   return { existing: coreCount === initialTables.length, hasHistory: present.has("schema_migrations") };
 }
@@ -55,28 +71,10 @@ async function main() {
     }
     if (check.existing && !check.hasHistory && !process.argv.includes("--baseline-existing"))
       throw new Error("Base existente sin historial. Requiere --baseline-existing después de revisar el esquema.");
-    await db.connection().execute(async (connection) => {
-      await sql`SELECT pg_advisory_lock(72638109)`.execute(connection);
-      try {
-        await sql`CREATE TABLE IF NOT EXISTS schema_migrations (
-          name TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
-        )`.execute(connection);
-        for (const name of files) {
-          const source = await fs.readFile(new URL(name, directory), "utf8");
-          const checksum = createHash("sha256").update(source).digest("hex");
-          const previous = await sql<{ checksum: string }>`SELECT checksum FROM schema_migrations WHERE name = ${name}`.execute(connection);
-          if (previous.rows[0]) {
-            if (previous.rows[0].checksum !== checksum) throw new Error("Migración aplicada modificada: " + name);
-            continue;
-          }
-          await connection.transaction().execute(async (trx) => {
-            if (!(check.existing && name === "001_initial_schema.sql")) await sql.raw(source).execute(trx);
-            await sql`INSERT INTO schema_migrations(name, checksum) VALUES (${name}, ${checksum})`.execute(trx);
-          });
-          console.log("Aplicada:", name);
-        }
-      } finally { await sql`SELECT pg_advisory_unlock(72638109)`.execute(connection); }
-    });
+    const migrations = await Promise.all(files.map(async (name) => ({ name,
+      source: await fs.readFile(new URL(name, directory), "utf8") })));
+    await db.connection().execute((connection) => applyMigrations(connection, migrations, check.existing,
+      (name) => console.log("Aplicada:", name)));
   } finally { await db.destroy(); }
 }
 if (process.argv[1] && fileURLToPath(import.meta.url).toLowerCase() === process.argv[1].toLowerCase()) {

@@ -5,7 +5,7 @@ export type SubscriptionPlanEnum =
   | "TRIAL"
   | "MONTHLY"
   | "BIMONTHLY"
-  | "TRIMONTHLY"
+  | "QUARTERLY"
   | "ANNUAL"
   | "LIFETIME_FREE";
 export type TransactionTypeEnum =
@@ -72,6 +72,21 @@ export interface WalletTransactionsTable {
   is_unlimited_before: boolean | null;
   is_unlimited_after: boolean | null;
   generation_request_id: string | null;
+  admin_audit_event_id: Generated<string | null>;
+}
+
+export interface AdminAuditEventsTable {
+  id: string;
+  actor_user_id: string;
+  actor_role: "SUPERADMIN";
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  reason: string;
+  before_data: unknown;
+  after_data: unknown;
+  request_id: string | null;
+  created_at: Generated<Date>;
 }
 
 export type GradeLevelEnum = "FIRST" | "SECOND" | "THIRD" | "FOURTH" | "FIFTH";
@@ -209,6 +224,7 @@ export interface EvaluationCriteriaTable {
 
 // Actualiza DatabaseSchema en src/infrastructure/database/types.ts:
 export interface DatabaseSchema {
+  admin_audit_events: AdminAuditEventsTable;
   auth_sessions: AuthSessionsTable;
   generation_requests: GenerationRequestsTable;
   users: UsersTable;

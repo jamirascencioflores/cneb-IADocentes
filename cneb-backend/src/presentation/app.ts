@@ -10,6 +10,7 @@ import { authRoutes } from "../modules/identity/infrastructure/controllers/auth.
 import { billingRoutes } from "../modules/billing/infrastructure/controllers/billing.controller.js";
 import { curriculumRoutes } from "../modules/curriculum/infrastructure/controllers/curriculum.controller.js";
 import { sessionRoutes } from "../modules/pedagogical-session/controllers/session.controller.js";
+import { adminRoutes } from "../modules/admin/infrastructure/admin.controller.js";
 
 const getLoggerConfig = () => {
   if (env.NODE_ENV === "test") return false;
@@ -64,6 +65,7 @@ export async function buildServer() {
   await server.register(billingRoutes, { prefix: "/api/v1" });
   await server.register(curriculumRoutes, { prefix: "/api/v1" });
   await server.register(sessionRoutes, { prefix: "/api/v1" });
+  await server.register(adminRoutes, { prefix: "/api/v1/admin" });
 
   return server;
 }

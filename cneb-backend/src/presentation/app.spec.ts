@@ -42,8 +42,11 @@ describe("stage 1 HTTP boundaries (no external database)", () => {
     expect((await app.inject({ method: "PUT", url: "/api/v1/profile/institutional", headers, payload: {} })).statusCode).toBe(404);
   });
   it("returns 403 for teacher administrative calls before body validation", async () => {
-    const result = await app.inject({ method: "PATCH", url: "/api/v1/admin/users/" + payload.sub + "/subscription", headers, payload: {} });
+    const result = await app.inject({ method: "POST", url: "/api/v1/admin/teachers", headers, payload: {} });
     expect(result.statusCode).toBe(403);
+  });
+  it("retires the legacy administrative subscription route", async () => {
+    expect((await app.inject({ method: "PATCH", url: "/api/v1/admin/users/" + payload.sub + "/subscription", headers, payload: {} })).statusCode).toBe(404);
   });
   it("requires an idempotency key and rejects frontend institutional identity", async () => {
     const result = await app.inject({ method: "POST", url: "/api/v1/sessions/generate", headers, payload: {} });
